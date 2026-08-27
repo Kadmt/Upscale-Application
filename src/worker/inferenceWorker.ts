@@ -607,12 +607,25 @@ self.onmessage = async (ev: MessageEvent) => {
             // Pure JavaScript Bilinear Resampling Fallback (100% universal browser compatibility)
             resizedData = fastBilinearResampleRGBA(srcU8, srcW, srcH, targetW, targetH);
           }
-          const sharpnessAmount = msg.sharpness !== undefined ? msg.sharpness : 0.3;
+          const sharpnessAmount = msg.sharpness !== undefined ? msg.sharpness : 0.35;
           const darknessAmount = msg.darkness !== undefined ? msg.darkness : 0.18;
           const roundnessAmount = msg.roundness !== undefined ? msg.roundness : 0.6;
           const isDoc = msg.mode === 'document8k';
 
-          const finalU8 = apply8KVectorDocumentEngine(resizedData, targetW, targetH, sharpnessAmount, darknessAmount, roundnessAmount, isDoc);
+          let inputData = resizedData;
+          if (!isDoc && session) {
+            try {
+              post({ kind: 'progress', taskId: msg.taskId, progress: 0.4, message: 'Running Deep Neural AI Super-Resolution...' });
+              const tileRes = await runInferenceOnTile(msg.imageBuffer, srcW, srcH);
+              if (tileRes && tileRes.buffer && tileRes.buffer.byteLength === targetW * targetH * 4) {
+                inputData = new Uint8ClampedArray(tileRes.buffer);
+              }
+            } catch (neuralErr) {
+              // Fallback cleanly to high-fidelity bicubic
+            }
+          }
+
+          const finalU8 = apply8KVectorDocumentEngine(inputData, targetW, targetH, sharpnessAmount, darknessAmount, roundnessAmount, isDoc);
 
           const outBuffer = finalU8.buffer.slice(finalU8.byteOffset, finalU8.byteOffset + targetW * targetH * 4);
           post({ kind: 'progress', taskId: msg.taskId, progress: 1.0, message: 'Complete' });

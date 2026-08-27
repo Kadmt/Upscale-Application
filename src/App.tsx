@@ -13,7 +13,7 @@ export default function App() {
   const [progress, setProgress] = useState<number>(0)
   const [progressMsg, setProgressMsg] = useState<string>('')
   const [selectedScale, setSelectedScale] = useState<number>(2)
-  const [sharpness, setSharpness] = useState<number>(0)
+  const [sharpness, setSharpness] = useState<number>(35)
   const [darkness, setDarkness] = useState<number>(18)
   const [mode, setMode] = useState<'general' | 'document8k'>('document8k')
 
