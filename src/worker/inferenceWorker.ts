@@ -43,19 +43,40 @@ function post<T>(msg: T, transfer?: Transferable[]) {
   ;(self as any).postMessage(msg, transfer || []);
 }
 
-async function initSession(modelArrayBuffer: ArrayBuffer, backend: 'webgpu' | 'wasm' = 'webgpu') {
-  const opts: AnyObject = { executionProviders: [backend] };
-  // onnxruntime-web exposes InferenceSession on the module
-  session = await ort.InferenceSession.create(modelArrayBuffer, opts);
-  // capture input/output names for convenience when available
+async function initSession(modelArrayBuffer: ArrayBuffer, backend: 'webgpu' | 'wasm' = 'wasm') {
+  // Configure WASM static asset paths via absolute origin URL
+  if (ort?.env?.wasm) {
+    const origin = typeof self !== 'undefined' && self.location && self.location.origin ? self.location.origin : '';
+    ort.env.wasm.wasmPaths = origin + '/ort-files/';
+  }
+
+  // Try execution providers in order: backend -> wasm (multi-thread) -> wasm (single-thread)
+  try {
+    const opts: AnyObject = { executionProviders: [backend] };
+    session = await ort.InferenceSession.create(modelArrayBuffer, opts);
+  } catch (err1) {
+    if (backend !== 'wasm') {
+      try {
+        session = await ort.InferenceSession.create(modelArrayBuffer, { executionProviders: ['wasm'] });
+      } catch (err2) {
+        if (ort?.env?.wasm) {
+          ort.env.wasm.numThreads = 1;
+        }
+        session = await ort.InferenceSession.create(modelArrayBuffer, { executionProviders: ['wasm'] });
+      }
+    } else {
+      if (ort?.env?.wasm) {
+        ort.env.wasm.numThreads = 1;
+      }
+      session = await ort.InferenceSession.create(modelArrayBuffer, { executionProviders: ['wasm'] });
+    }
+  }
+
   if (session) {
     try {
-      // some builds populate inputNames/outputNames
       session.inputNames = session.inputNames || (session.inputMetadata ? Object.keys(session.inputMetadata) : undefined);
       session.outputNames = session.outputNames || (session.outputMetadata ? Object.keys(session.outputMetadata) : undefined);
-    } catch (e) {
-      // ignore
-    }
+    } catch (e) {}
   }
   return session;
 }

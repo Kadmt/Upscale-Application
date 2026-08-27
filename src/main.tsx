@@ -7,16 +7,11 @@ const container = document.getElementById('root')!
 const root = createRoot(container)
 root.render(<App />)
 
-// Register service worker on window load to enable model caching
+// Unregister any stale Service Worker to ensure clean network fetches on Vercel CDN
 if ('serviceWorker' in navigator) {
-	window.addEventListener('load', () => {
-		navigator.serviceWorker
-			.register('/sw.js')
-			.then((reg) => {
-				console.log('ServiceWorker registered:', reg.scope)
-			})
-			.catch((err) => {
-				console.warn('ServiceWorker registration failed:', err)
-			})
-	})
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    for (const registration of registrations) {
+      registration.unregister()
+    }
+  })
 }
