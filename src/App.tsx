@@ -20,18 +20,18 @@ export default function App() {
   const controllerRef = useRef<InferenceController | null>(null)
 
   useEffect(() => {
-    const worker = new InferenceWorker()
-    controllerRef.current = new InferenceController(worker, (p, m) => {
-      if (typeof p === 'number' && !isNaN(p)) {
-        setProgress(Math.round(p * 100))
-      }
-      if (m) setProgressMsg(m)
-    })
+    if (!controllerRef.current) {
+      const worker = new InferenceWorker()
+      controllerRef.current = new InferenceController(worker, (p, m) => {
+        if (typeof p === 'number' && !isNaN(p)) {
+          setProgress(Math.round(p * 100))
+        }
+        if (m) setProgressMsg(m)
+      })
 
-    ;(window as any).__inferenceController = controllerRef.current
-    controllerRef.current.init('/models/super-resolution-10.onnx')
-
-    return () => controllerRef.current?.dispose()
+      ;(window as any).__inferenceController = controllerRef.current
+      controllerRef.current.init('/models/super-resolution-10.onnx')
+    }
   }, [])
 
   useEffect(() => {

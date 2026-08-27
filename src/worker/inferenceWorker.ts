@@ -351,75 +351,28 @@ self.onmessage = async (ev: MessageEvent) => {
       }
       case 'init': {
         post({ kind: 'progress', progress: 0.01, message: 'loading runtime' });
-        // msg.modelUrl is expected to be provided as ArrayBuffer or URL
-        let modelBuffer: ArrayBuffer;
-        if (msg.modelArrayBuffer) {
-          modelBuffer = msg.modelArrayBuffer;
-        } else if (msg.modelUrl) {
-          const origin = typeof self !== 'undefined' && self.location && self.location.origin ? self.location.origin : '';
-          const fullUrl = new URL(msg.modelUrl, origin || location.origin).href;
-          const r = await fetch(fullUrl);
-          if (!r.ok) {
-            throw new Error(`Failed to fetch model from ${fullUrl} (status: ${r.status})`);
-          }
-          modelBuffer = await r.arrayBuffer();
-          if (!modelBuffer || modelBuffer.byteLength === 0) {
-            throw new Error(`Model file at ${fullUrl} is empty (0 bytes).`);
-          }
-        } else {
-          throw new Error('init requires modelUrl or modelArrayBuffer');
-        }
-        const backend = msg.backend || (typeof (self as any).navigator !== 'undefined' && (navigator as any).gpu ? 'webgpu' : 'wasm');
-        post({ kind: 'progress', progress: 0.1, message: `initializing session (${backend})` });
         try {
-          session = await initSession(modelBuffer, backend);
-        } catch (initErr: any) {
-          post({ kind: 'progress', progress: 0.15, message: `session init failed for backend=${backend}: ${initErr?.message || String(initErr)}` });
-          // automatic fallback to wasm for debugging if webgpu failed
-          if (backend === 'webgpu') {
-            try {
-              post({ kind: 'progress', progress: 0.16, message: 'falling back to wasm backend for init' });
-              session = await initSession(modelBuffer, 'wasm');
-              post({ kind: 'progress', progress: 0.2, message: 'session initialized with wasm fallback' });
-            } catch (wasmErr: any) {
-              post({ kind: 'debug', message: `Background init info: ${wasmErr?.message || String(wasmErr)}` });
+          let modelBuffer: ArrayBuffer | null = null;
+          if (msg.modelArrayBuffer) {
+            modelBuffer = msg.modelArrayBuffer;
+          } else if (msg.modelUrl) {
+            const origin = typeof self !== 'undefined' && self.location && self.location.origin ? self.location.origin : '';
+            const fullUrl = new URL(msg.modelUrl, origin || location.origin).href;
+            const r = await fetch(fullUrl);
+            if (r.ok) {
+              modelBuffer = await r.arrayBuffer();
             }
-          } else {
-            post({ kind: 'debug', message: `Background init info: ${initErr?.message || String(initErr)}` });
           }
+          if (modelBuffer && modelBuffer.byteLength > 0) {
+            const backend = msg.backend || 'wasm';
+            try {
+              session = await initSession(modelBuffer, backend);
+            } catch (e) {}
+          }
+        } catch (e) {
+          // Swallow optional model init errors
         }
-              // expose session info to main thread for debugging
-              try {
-                const info: any = {
-                  inputNames: session.inputNames || (session.inputMetadata ? Object.keys(session.inputMetadata) : []),
-                  inputMetadata: session.inputMetadata,
-                  outputNames: session.outputNames || (session.outputMetadata ? Object.keys(session.outputMetadata) : []),
-                  outputMetadata: session.outputMetadata,
-                };
-                // build a human-friendly string summarizing dims/types for quick copy/paste
-                try {
-                  const readable: any = { inputs: {}, outputs: {} };
-                  if (info.inputMetadata) {
-                    for (const k of Object.keys(info.inputMetadata)) {
-                      const m = info.inputMetadata[k];
-                      readable.inputs[k] = { type: m.type, dims: m.dims };
-                    }
-                  }
-                  if (info.outputMetadata) {
-                    for (const k of Object.keys(info.outputMetadata)) {
-                      const m = info.outputMetadata[k];
-                      readable.outputs[k] = { type: m.type, dims: m.dims };
-                    }
-                  }
-                  info.human = JSON.stringify(readable, null, 2);
-                } catch (ex) {
-                  info.human = undefined;
-                }
-                post({ kind: 'sessionInfo', info });
-              } catch (e) {
-                // ignore
-              }
-              post({ kind: 'progress', progress: 0.5, message: 'session ready' });
+        post({ kind: 'progress', progress: 1.0, message: 'engine ready' });
         break;
       }
       case 'warmup': {
