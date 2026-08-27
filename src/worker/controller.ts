@@ -93,7 +93,7 @@ export class InferenceController {
       mode,
       tileSize,
     };
-    this.worker.postMessage(req, [req.imageBuffer]);
+    this.worker.postMessage(req);
   }
 
   async processFullImageDebugY(taskId: string, imageData: ImageData, scale = 2) {

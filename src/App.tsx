@@ -84,6 +84,15 @@ export default function App() {
       alert('Please select an image to upscale first.')
       return
     }
+
+    let freshData = imageData
+    try {
+      const copyBytes = new Uint8ClampedArray(imageData.data)
+      freshData = new ImageData(copyBytes, imageData.width, imageData.height)
+    } catch (e) {
+      console.error('Failed to clone imageData:', e)
+    }
+
     setStatus('processing')
     setProgress(0)
     setProgressMsg('Processing neural upscaling tiles...')
@@ -91,7 +100,7 @@ export default function App() {
     const sharpnessStrength = sharpness / 100
     const darknessFactor = darkness / 100
     const optimalRoundness = 0.6
-    controllerRef.current?.processFullImage(id, imageData, selectedScale, sharpnessStrength, darknessFactor, optimalRoundness, mode)
+    controllerRef.current?.processFullImage(id, freshData, selectedScale, sharpnessStrength, darknessFactor, optimalRoundness, mode)
   }
 
   return (
