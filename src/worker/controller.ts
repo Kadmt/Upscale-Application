@@ -59,7 +59,7 @@ export class InferenceController {
     }
   }
 
-  async init(modelUrl: string, backend: 'webgpu' | 'wasm' = 'webgpu') {
+  async init(modelUrl: string, backend: 'webgpu' | 'wasm' = 'wasm') {
     const req: InitRequest = { kind: 'init', modelUrl, backend };
     this.worker.postMessage(req);
   }

@@ -14,7 +14,7 @@ export default defineConfig({
           const filePath = path.join(__dirname, 'node_modules', 'onnxruntime-web', 'dist', fileName)
           if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
             if (filePath.endsWith('.wasm')) res.setHeader('Content-Type', 'application/wasm')
-            if (filePath.endsWith('.mjs') || filePath.endsWith('.js')) res.setHeader('Content-Type', 'text/javascript')
+            if (filePath.endsWith('.mjs') || filePath.endsWith('.js')) res.setHeader('Content-Type', 'application/javascript; charset=utf-8')
             return fs.createReadStream(filePath).pipe(res)
           }
           next()
@@ -22,6 +22,9 @@ export default defineConfig({
       }
     }
   ],
+  worker: {
+    format: 'es',
+  },
   build: {
     target: 'es2020',
   },

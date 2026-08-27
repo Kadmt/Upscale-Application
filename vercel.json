@@ -14,15 +14,11 @@
       ]
     },
     {
-      "source": "/(.*)\\.wasm",
+      "source": "/(.*)\\.js",
       "headers": [
         {
           "key": "Content-Type",
-          "value": "application/wasm"
-        },
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=31536000, immutable"
+          "value": "application/javascript; charset=utf-8"
         }
       ]
     },
@@ -32,6 +28,28 @@
         {
           "key": "Content-Type",
           "value": "application/javascript; charset=utf-8"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)\\.ts",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/javascript; charset=utf-8"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)\\.wasm",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/wasm"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
         }
       ]
     },

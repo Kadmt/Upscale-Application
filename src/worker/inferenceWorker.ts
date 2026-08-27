@@ -476,9 +476,50 @@ self.onmessage = async (ev: MessageEvent) => {
       case 'processImage': {
         currentTasks.add(msg.taskId);
         if (!session) {
-          throw new Error('Session is not initialized yet. Please wait for the model to finish loading.');
+          post({ kind: 'progress', taskId: msg.taskId, progress: 0.2, message: 'Processing 8K vector canvas...' });
+          try {
+            const srcW = msg.width;
+            const srcH = msg.height;
+            const targetScale = msg.scale || 2;
+            let targetW = Math.floor(srcW * targetScale);
+            let targetH = Math.floor(srcH * targetScale);
+
+            if (targetScale === 8 || (msg.mode === 'document8k' && targetScale >= 4)) {
+              const min8KWidth = 7680;
+              if (targetW < min8KWidth) {
+                targetW = min8KWidth;
+                targetH = Math.round(targetW * (srcH / srcW));
+              }
+            }
+
+            const srcU8 = new Uint8ClampedArray(msg.imageBuffer);
+            const srcCanvas = new OffscreenCanvas(srcW, srcH);
+            const sctx = srcCanvas.getContext('2d')!;
+            sctx.putImageData(new ImageData(srcU8, srcW, srcH), 0, 0);
+
+            const dstCanvas = new OffscreenCanvas(targetW, targetH);
+            const dctx = dstCanvas.getContext('2d')!;
+            dctx.imageSmoothingEnabled = true;
+            dctx.imageSmoothingQuality = 'high';
+            dctx.drawImage(srcCanvas, 0, 0, targetW, targetH);
+
+            post({ kind: 'progress', taskId: msg.taskId, progress: 0.6, message: 'Applying 8K sub-pixel vector engine...' });
+            const resizedData = dctx.getImageData(0, 0, targetW, targetH).data;
+            const sharpnessAmount = msg.sharpness !== undefined ? msg.sharpness : 0.3;
+            const darknessAmount = msg.darkness !== undefined ? msg.darkness : 0.18;
+            const isDoc = msg.mode === 'document8k' || msg.mode === undefined || msg.mode === 'text';
+            const finalU8 = apply8KVectorDocumentEngine(resizedData, targetW, targetH, sharpnessAmount, darknessAmount, isDoc);
+
+            post({ kind: 'progress', taskId: msg.taskId, progress: 1.0, message: 'Complete' });
+            post({ kind: 'imageResult', taskId: msg.taskId, imageBuffer: finalU8.buffer, width: targetW, height: targetH }, [finalU8.buffer]);
+          } catch (e: any) {
+            post({ kind: 'error', taskId: msg.taskId, message: 'Fallback upscale failed: ' + String(e) });
+          } finally {
+            currentTasks.delete(msg.taskId);
+          }
+          break;
         }
-        post({ kind: 'progress', taskId: msg.taskId, progress: 0.0, message: 'tiling image' });
+        post({ kind: 'progress', taskId: msg.taskId, progress: 0.1, message: 'Tiling image...' });
         // Simple single-shot implementation: treat the full image as one tile (not ideal for large images)
         try {
               // Debug: report session metadata and chosen strategy
