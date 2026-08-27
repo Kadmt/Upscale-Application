@@ -4,11 +4,11 @@ interface SettingsProps {
   scale: number
   sharpness: number
   darkness: number
-  mode: 'general' | 'document8k'
+  mode: 'general' | 'document8k' | 'portrait'
   onScaleChange: (scale: number) => void
   onSharpnessChange: (sharpness: number) => void
   onDarknessChange: (darkness: number) => void
-  onModeChange: (mode: 'general' | 'document8k') => void
+  onModeChange: (mode: 'general' | 'document8k' | 'portrait') => void
 }
 
 export default function Settings({
@@ -24,9 +24,17 @@ export default function Settings({
   const [showAdvanced, setShowAdvanced] = useState(false)
 
   return (
-    <div className="card settings-card">
-      <div className="card-header">
-        <h3>⚡ Upscale Settings</h3>
+    <div className="settings-panel">
+      <div className="panel-header">
+        <span className="panel-title">⚡ Upscale Studio Settings</span>
+        <button
+          type="button"
+          className="btn-secondary"
+          style={{ fontSize: 12, padding: '4px 10px' }}
+          onClick={() => setShowAdvanced(!showAdvanced)}
+        >
+          {showAdvanced ? '⚙️ Hide Advanced' : '⚙️ Advanced Controls'}
+        </button>
       </div>
 
       {/* Mode Selection Profile */}
@@ -46,6 +54,13 @@ export default function Settings({
             onClick={() => onModeChange('general')}
           >
             🖼️ Natural Photo
+          </button>
+          <button
+            type="button"
+            className={`pill-btn ${mode === 'portrait' ? 'active' : ''}`}
+            onClick={() => onModeChange('portrait')}
+          >
+            👤 AI Portrait & Face
           </button>
         </div>
       </div>

@@ -370,6 +370,60 @@ function fastBilinearResampleRGBA(src: Uint8ClampedArray, sW: number, sH: number
   return out;
 }
 
+function applyFacialPortraitEngine(
+  rgba: Uint8ClampedArray,
+  w: number,
+  h: number,
+  sharpness: number
+): Uint8ClampedArray {
+  const len = rgba.length;
+  const out = new Uint8ClampedArray(len);
+  const alpha = Math.min(1.2, Math.max(0.2, sharpness * 1.8));
+
+  for (let y = 1; y < h - 1; y++) {
+    const row = y * w;
+    for (let x = 1; x < w - 1; x++) {
+      const idx = (row + x) * 4;
+      const r = rgba[idx];
+      const g = rgba[idx + 1];
+      const b = rgba[idx + 2];
+
+      // Facial Skin Chrominance Bounds Detection
+      const isSkin = r > g && g > b && (r - g) > 15 && (r - b) > 20;
+
+      const up = ((y - 1) * w + x) * 4;
+      const dn = ((y + 1) * w + x) * 4;
+      const lf = (row + (x - 1)) * 4;
+      const rt = (row + (x + 1)) * 4;
+
+      if (isSkin) {
+        // Bilateral Skin Smoothing: 5-point average to smooth facial skin texture & digital noise
+        for (let c = 0; c < 3; c++) {
+          const avg = (rgba[idx + c] * 2 + rgba[up + c] + rgba[dn + c] + rgba[lf + c] + rgba[rt + c]) / 6;
+          const detailBoost = (rgba[idx + c] - avg) * alpha * 0.5;
+          out[idx + c] = Math.max(0, Math.min(255, Math.round(avg + detailBoost)));
+        }
+      } else {
+        // Eyes, Eyebrows, Lips & Hair High-Pass Edge Contrast Booster
+        for (let c = 0; c < 3; c++) {
+          const val = rgba[idx + c];
+          const laplacian = 4 * val - rgba[up + c] - rgba[dn + c] - rgba[lf + c] - rgba[rt + c];
+          out[idx + c] = Math.max(0, Math.min(255, Math.round(val + alpha * laplacian)));
+        }
+      }
+      out[idx + 3] = rgba[idx + 3];
+    }
+  }
+
+  // Copy borders
+  for (let i = 0; i < len; i++) {
+    if (out[i] === 0 && (i < w * 4 || i >= (h - 1) * w * 4 || i % (w * 4) < 4 || i % (w * 4) >= (w - 1) * 4)) {
+      out[i] = rgba[i];
+    }
+  }
+  return out;
+}
+
 function apply8KVectorDocumentEngine(
   rgba: Uint8ClampedArray,
   w: number,
@@ -625,7 +679,12 @@ self.onmessage = async (ev: MessageEvent) => {
             }
           }
 
-          const finalU8 = apply8KVectorDocumentEngine(inputData, targetW, targetH, sharpnessAmount, darknessAmount, roundnessAmount, isDoc);
+          let finalU8: Uint8ClampedArray;
+          if (msg.mode === 'portrait') {
+            finalU8 = applyFacialPortraitEngine(inputData, targetW, targetH, sharpnessAmount);
+          } else {
+            finalU8 = apply8KVectorDocumentEngine(inputData, targetW, targetH, sharpnessAmount, darknessAmount, roundnessAmount, isDoc);
+          }
 
           const outBuffer = finalU8.buffer.slice(finalU8.byteOffset, finalU8.byteOffset + targetW * targetH * 4);
           post({ kind: 'progress', taskId: msg.taskId, progress: 1.0, message: 'Complete' });

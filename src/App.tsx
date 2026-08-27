@@ -15,7 +15,7 @@ export default function App() {
   const [selectedScale, setSelectedScale] = useState<number>(2)
   const [sharpness, setSharpness] = useState<number>(35)
   const [darkness, setDarkness] = useState<number>(18)
-  const [mode, setMode] = useState<'general' | 'document8k'>('document8k')
+  const [mode, setMode] = useState<'general' | 'document8k' | 'portrait'>('document8k')
 
   const controllerRef = useRef<InferenceController | null>(null)
 

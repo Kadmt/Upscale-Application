@@ -36,7 +36,7 @@ export interface ProcessImageRequest {
   sharpness?: number; // 0..2.5 enhancement strength
   darkness?: number; // 0..0.5 smooth text darkening factor
   roundness?: number; // 0..1 stroke roundness & solidification strength
-  mode?: 'general' | 'document8k'; // enhancement profile
+  mode?: 'general' | 'document8k' | 'portrait'; // enhancement profile
 }
 
 export interface CancelRequest {
