@@ -6,7 +6,8 @@ interface PreviewProps {
 }
 
 export default function Preview({ originalImage, processedImage }: PreviewProps) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const procCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const origCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [zoom, setZoom] = useState<'fit' | '100' | '200'>('fit')
   const [splitPos, setSplitPos] = useState<number>(50) // 0 to 100%
@@ -14,70 +15,40 @@ export default function Preview({ originalImage, processedImage }: PreviewProps)
 
   const activeImage = processedImage || originalImage
 
-  const cachedOrigCanvas = useRef<HTMLCanvasElement | null>(null)
-  const cachedProcCanvas = useRef<HTMLCanvasElement | null>(null)
-
-  // Cache Original Canvas whenever originalImage changes
+  // Render Processed HD Canvas (Base Layer) ONCE when processedImage changes
   useEffect(() => {
-    if (!originalImage) {
-      cachedOrigCanvas.current = null
-      return
-    }
-    const c = document.createElement('canvas')
-    c.width = originalImage.width
-    c.height = originalImage.height
-    c.getContext('2d')!.putImageData(originalImage, 0, 0)
-    cachedOrigCanvas.current = c
-  }, [originalImage])
+    const canvas = procCanvasRef.current
+    if (!canvas || !processedImage) return
 
-  // Cache Processed Canvas whenever processedImage changes
-  useEffect(() => {
-    if (!processedImage) {
-      cachedProcCanvas.current = null
-      return
-    }
-    const c = document.createElement('canvas')
-    c.width = processedImage.width
-    c.height = processedImage.height
-    c.getContext('2d')!.putImageData(processedImage, 0, 0)
-    cachedProcCanvas.current = c
+    const w = processedImage.width
+    const h = processedImage.height
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')!
+    ctx.putImageData(processedImage, 0, 0)
   }, [processedImage])
 
+  // Render Original Canvas (Top Layer) ONCE when originalImage/processedImage changes
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas || !activeImage) return
+    const canvas = origCanvasRef.current
+    if (!canvas || !originalImage) return
 
-    const width = activeImage.width
-    const height = activeImage.height
-    if (canvas.width !== width) canvas.width = width
-    if (canvas.height !== height) canvas.height = height
+    const targetW = processedImage ? processedImage.width : originalImage.width
+    const targetH = processedImage ? processedImage.height : originalImage.height
+
+    canvas.width = targetW
+    canvas.height = targetH
 
     const ctx = canvas.getContext('2d')!
+    const tmp = document.createElement('canvas')
+    tmp.width = originalImage.width
+    tmp.height = originalImage.height
+    tmp.getContext('2d')!.putImageData(originalImage, 0, 0)
 
-    if (cachedProcCanvas.current && cachedOrigCanvas.current) {
-      // 1. Render Processed HD Image from GPU cache
-      ctx.drawImage(cachedProcCanvas.current, 0, 0, width, height)
-
-      // 2. Render Original Image on left side clipped to splitPos%
-      const splitX = Math.round((splitPos / 100) * width)
-      if (splitX > 0) {
-        ctx.save()
-        ctx.beginPath()
-        ctx.rect(0, 0, splitX, height)
-        ctx.clip()
-        ctx.imageSmoothingEnabled = true
-        ctx.imageSmoothingQuality = 'high'
-        ctx.drawImage(cachedOrigCanvas.current, 0, 0, width, height)
-        ctx.restore()
-      }
-    } else if (cachedProcCanvas.current) {
-      ctx.drawImage(cachedProcCanvas.current, 0, 0, width, height)
-    } else if (cachedOrigCanvas.current) {
-      ctx.drawImage(cachedOrigCanvas.current, 0, 0, width, height)
-    } else {
-      ctx.putImageData(activeImage, 0, 0)
-    }
-  }, [originalImage, processedImage, activeImage, splitPos])
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
+    ctx.drawImage(tmp, 0, 0, targetW, targetH)
+  }, [originalImage, processedImage])
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isDragging || !containerRef.current) return
@@ -223,81 +194,108 @@ export default function Preview({ originalImage, processedImage }: PreviewProps)
               maxWidth: '100%',
               maxHeight: '100%',
               overflow: zoom !== 'fit' ? 'auto' : 'hidden',
-              display: 'inline-block',
+              display: 'grid',
+              placeItems: 'center',
             }}
           >
-            {/* Single Unified Canvas Component */}
-            <canvas
-              ref={canvasRef}
+            {/* Grid Cell Container holding both aligned canvases */}
+            <div
               style={{
+                display: 'grid',
+                gridArea: '1 / 1',
+                position: 'relative',
                 maxWidth: '100%',
                 maxHeight: '100%',
-                display: 'block',
                 transform: getZoomScale(),
                 transformOrigin: 'center center',
                 transition: 'transform 0.15s ease',
               }}
-            />
-
-            {/* Split Slider Divider Line & Handle */}
-            {originalImage && processedImage && (
-              <>
-                <div
+            >
+              {/* Bottom Canvas: Processed HD Image */}
+              {processedImage && (
+                <canvas
+                  ref={procCanvasRef}
                   style={{
-                    position: 'absolute',
-                    top: 0,
-                    bottom: 0,
-                    left: `${splitPos}%`,
-                    width: 3,
-                    background: '#ffffff',
-                    boxShadow: '0 0 10px rgba(0,0,0,0.5)',
-                    pointerEvents: 'none',
-                    zIndex: 10,
+                    gridArea: '1 / 1',
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    display: 'block',
                   }}
-                >
+                />
+              )}
+
+              {/* Top Canvas: Original Image (GPU Clipped dynamically on drag) */}
+              <canvas
+                ref={origCanvasRef}
+                style={{
+                  gridArea: '1 / 1',
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  display: 'block',
+                  clipPath: processedImage ? `polygon(0 0, ${splitPos}% 0, ${splitPos}% 100%, 0 100%)` : 'none',
+                }}
+              />
+
+              {/* Split Slider Divider Line & Handle */}
+              {originalImage && processedImage && (
+                <>
                   <div
                     style={{
                       position: 'absolute',
-                      top: '50%',
-                      left: '50%',
-                      transform: 'translate(-50%, -50%)',
-                      width: 32,
-                      height: 32,
-                      borderRadius: '50%',
+                      top: 0,
+                      bottom: 0,
+                      left: `${splitPos}%`,
+                      width: 3,
                       background: '#ffffff',
-                      color: '#0f172a',
-                      boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 14,
-                      fontWeight: 'bold',
-                      cursor: 'ew-resize',
+                      boxShadow: '0 0 10px rgba(0,0,0,0.5)',
+                      pointerEvents: 'none',
+                      zIndex: 10,
                     }}
                   >
-                    ↔
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '50%',
+                        left: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        width: 32,
+                        height: 32,
+                        borderRadius: '50%',
+                        background: '#ffffff',
+                        color: '#0f172a',
+                        boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 14,
+                        fontWeight: 'bold',
+                        cursor: 'ew-resize',
+                      }}
+                    >
+                      ↔
+                    </div>
                   </div>
-                </div>
 
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: 12,
-                    left: 12,
-                    background: 'rgba(15, 23, 42, 0.85)',
-                    color: '#ffffff',
-                    padding: '4px 12px',
-                    borderRadius: 20,
-                    fontSize: 11,
-                    fontWeight: 600,
-                    backdropFilter: 'blur(4px)',
-                    zIndex: 10,
-                  }}
-                >
-                  ◀ Original ({Math.round(splitPos)}%) | Upscaled HD ▶
-                </div>
-              </>
-            )}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 12,
+                      left: 12,
+                      background: 'rgba(15, 23, 42, 0.85)',
+                      color: '#ffffff',
+                      padding: '4px 12px',
+                      borderRadius: 20,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      backdropFilter: 'blur(4px)',
+                      zIndex: 10,
+                    }}
+                  >
+                    ◀ Original ({Math.round(splitPos)}%) | Upscaled HD ▶
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>
