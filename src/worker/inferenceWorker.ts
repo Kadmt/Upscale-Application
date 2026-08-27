@@ -327,6 +327,45 @@ async function runInferenceOnTile(tileBuffer: ArrayBuffer, tileWidth: number, ti
   return { buffer: outU8.buffer, width: w, height: h };
 }
 
+function fastBilinearResampleRGBA(src: Uint8ClampedArray, sW: number, sH: number, dW: number, dH: number): Uint8ClampedArray {
+  const out = new Uint8ClampedArray(dW * dH * 4);
+  const scaleX = sW / dW;
+  const scaleY = sH / dH;
+  for (let y = 0; y < dH; y++) {
+    const sy = y * scaleY;
+    const y0 = Math.floor(sy);
+    const y1 = Math.min(sH - 1, y0 + 1);
+    const dy = sy - y0;
+    const row0 = y0 * sW;
+    const row1 = y1 * sW;
+    const outRow = y * dW;
+
+    for (let x = 0; x < dW; x++) {
+      const sx = x * scaleX;
+      const x0 = Math.floor(sx);
+      const x1 = Math.min(sW - 1, x0 + 1);
+      const dx = sx - x0;
+
+      const i00 = (row0 + x0) * 4;
+      const i10 = (row0 + x1) * 4;
+      const i01 = (row1 + x0) * 4;
+      const i11 = (row1 + x1) * 4;
+      const outIdx = (outRow + x) * 4;
+
+      const w00 = (1 - dx) * (1 - dy);
+      const w10 = dx * (1 - dy);
+      const w01 = (1 - dx) * dy;
+      const w11 = dx * dy;
+
+      out[outIdx]     = Math.round(src[i00] * w00 + src[i10] * w10 + src[i01] * w01 + src[i11] * w11);
+      out[outIdx + 1] = Math.round(src[i00 + 1] * w00 + src[i10 + 1] * w10 + src[i01 + 1] * w01 + src[i11 + 1] * w11);
+      out[outIdx + 2] = Math.round(src[i00 + 2] * w00 + src[i10 + 2] * w10 + src[i01 + 2] * w01 + src[i11 + 2] * w11);
+      out[outIdx + 3] = Math.round(src[i00 + 3] * w00 + src[i10 + 3] * w10 + src[i01 + 3] * w01 + src[i11 + 3] * w11);
+    }
+  }
+  return out;
+}
+
 self.onmessage = async (ev: MessageEvent) => {
   const msg = ev.data as any;
   try {
@@ -418,18 +457,25 @@ self.onmessage = async (ev: MessageEvent) => {
 
           const expectedSrcBytes = srcW * srcH * 4;
           const srcU8 = new Uint8ClampedArray(msg.imageBuffer, 0, expectedSrcBytes);
-          const srcCanvas = new OffscreenCanvas(srcW, srcH);
-          const sctx = srcCanvas.getContext('2d')!;
-          sctx.putImageData(new ImageData(srcU8, srcW, srcH), 0, 0);
+          let resizedData: Uint8ClampedArray;
+          try {
+            if (typeof OffscreenCanvas === 'undefined') throw new Error('OffscreenCanvas unsupported');
+            const srcCanvas = new OffscreenCanvas(srcW, srcH);
+            const sctx = srcCanvas.getContext('2d');
+            if (!sctx) throw new Error('OffscreenCanvas 2D context unavailable');
+            sctx.putImageData(new ImageData(srcU8, srcW, srcH), 0, 0);
 
-          const dstCanvas = new OffscreenCanvas(targetW, targetH);
-          const dctx = dstCanvas.getContext('2d')!;
-          dctx.imageSmoothingEnabled = true;
-          dctx.imageSmoothingQuality = 'high';
-          dctx.drawImage(srcCanvas, 0, 0, targetW, targetH);
-
-          post({ kind: 'progress', taskId: msg.taskId, progress: 0.6, message: 'Applying enhancement filter...' });
-          const resizedData = dctx.getImageData(0, 0, targetW, targetH).data;
+            const dstCanvas = new OffscreenCanvas(targetW, targetH);
+            const dctx = dstCanvas.getContext('2d');
+            if (!dctx) throw new Error('OffscreenCanvas 2D context unavailable');
+            dctx.imageSmoothingEnabled = true;
+            dctx.imageSmoothingQuality = 'high';
+            dctx.drawImage(srcCanvas, 0, 0, targetW, targetH);
+            resizedData = dctx.getImageData(0, 0, targetW, targetH).data;
+          } catch (canvasErr) {
+            // Pure JavaScript Bilinear Resampling Fallback (100% universal browser compatibility)
+            resizedData = fastBilinearResampleRGBA(srcU8, srcW, srcH, targetW, targetH);
+          }
           const sharpnessAmount = msg.sharpness !== undefined ? msg.sharpness : 0.3;
           const darknessAmount = msg.darkness !== undefined ? msg.darkness : 0.18;
           const roundnessAmount = msg.roundness !== undefined ? msg.roundness : 0.6;

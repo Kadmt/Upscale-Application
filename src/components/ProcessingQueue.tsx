@@ -50,6 +50,12 @@ export default function ProcessingQueue({ status, progress = 0, progressMessage 
           🎉 Image upscaled with sharp detail! Use the zoom & slider in the Studio Canvas to inspect.
         </div>
       )}
+
+      {status === 'error' && (
+        <div style={{ fontSize: 12, color: '#b91c1c', marginTop: 10, background: '#fef2f2', padding: '8px 12px', borderRadius: 8, border: '1px solid #fecaca' }}>
+          ⚠️ {progressMessage || 'Error occurred during image processing'}
+        </div>
+      )}
     </div>
   )
 }
