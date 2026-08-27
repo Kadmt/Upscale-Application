@@ -43,12 +43,6 @@ export class InferenceController {
         window.dispatchEvent(new CustomEvent('inference:debug', { detail: msg }));
         break;
       case 'error':
-        try {
-          console.error('inference error', msg);
-          if ((msg as any).details) console.error('inference error details', (msg as any).details);
-        } catch (e) {
-          // ignore
-        }
         window.dispatchEvent(new CustomEvent('inference:error', { detail: msg }));
         break;
       default:

@@ -63,7 +63,6 @@ export default function App() {
 
     const onError = (e: Event) => {
       const detail = (e as CustomEvent).detail
-      console.error('Inference error:', detail)
       if (detail && detail.taskId) {
         setStatus('error')
         setProgressMsg(detail?.message || 'Error occurred during neural inference')
