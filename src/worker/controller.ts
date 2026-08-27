@@ -12,8 +12,12 @@ export class InferenceController {
   private worker: Worker;
   private onProgress?: ProgressHandler;
 
-  constructor(workerUrl: string, onProgress?: ProgressHandler) {
-    this.worker = new Worker(workerUrl, { type: 'module' });
+  constructor(workerOrUrl: string | Worker, onProgress?: ProgressHandler) {
+    if (typeof workerOrUrl === 'string') {
+      this.worker = new Worker(workerOrUrl, { type: 'module' });
+    } else {
+      this.worker = workerOrUrl;
+    }
     this.onProgress = onProgress;
     this.worker.onmessage = this.handleMessage.bind(this);
   }

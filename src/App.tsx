@@ -4,6 +4,7 @@ import Preview from './components/Preview'
 import ProcessingQueue from './components/ProcessingQueue'
 import Settings from './components/Settings'
 import { InferenceController } from './worker/controller'
+import InferenceWorker from './worker/inferenceWorker?worker'
 
 export default function App() {
   const [imageData, setImageData] = useState<ImageData | null>(null)
@@ -19,9 +20,11 @@ export default function App() {
   const controllerRef = useRef<InferenceController | null>(null)
 
   useEffect(() => {
-    const workerUrl = new URL('./worker/inferenceWorker.ts', import.meta.url)
-    controllerRef.current = new InferenceController(workerUrl.href, (p, m) => {
-      setProgress(p * 100)
+    const worker = new InferenceWorker()
+    controllerRef.current = new InferenceController(worker, (p, m) => {
+      if (typeof p === 'number' && !isNaN(p)) {
+        setProgress(Math.round(p * 100))
+      }
       if (m) setProgressMsg(m)
     })
 
