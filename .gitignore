@@ -2,12 +2,26 @@
 node_modules
 .pnpm-store
 
-# Production build output
+# Environment & Local Secrets
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+*.env
+
+# Deployment CLI Local Folders
+.vercel
+.netlify
+
+# Production build & cache outputs
 dist
 dist-ssr
+.vite
+.cache
 *.local
 
-# Logs
+# Logs & Debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -23,6 +37,8 @@ pnpm-debug.log*
 *.sln
 *.sw?
 
-# Temporary / Scratch
+# Temporary & Scratch
 scratch
 .gemini
+tmp
+temp
