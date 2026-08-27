@@ -75,19 +75,29 @@ export default function Preview({ originalImage, processedImage }: PreviewProps)
     const ctx = canvas.getContext('2d')!
     ctx.putImageData(processedImage, 0, 0)
 
-    const link = document.createElement('a')
-    link.download = `upscaled-hd-${processedImage.width}x${processedImage.height}.png`
-    link.href = canvas.toDataURL('image/png')
-    link.click()
+    canvas.toBlob((blob) => {
+      if (!blob) return
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.download = `upscaled-hd-${processedImage.width}x${processedImage.height}.png`
+      link.href = url
+      link.click()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    }, 'image/png')
   }
 
   const handleDownloadComparison = () => {
     if (!originalImage || !processedImage) return
+
+    // Cap max display width per side for side-by-side export to 1920px (total 3860px) so blob memory never fails
+    const maxExportW = 1920
+    const scaleFactor = Math.min(1, maxExportW / processedImage.width)
+    const exportW = Math.round(processedImage.width * scaleFactor)
+    const exportH = Math.round(processedImage.height * scaleFactor)
+
     const canvas = document.createElement('canvas')
-    const w = processedImage.width
-    const h = processedImage.height
-    canvas.width = w * 2 + 20
-    canvas.height = h + 40
+    canvas.width = exportW * 2 + 20
+    canvas.height = exportH + 40
     const ctx = canvas.getContext('2d')!
 
     ctx.fillStyle = '#f8fafc'
@@ -97,23 +107,28 @@ export default function Preview({ originalImage, processedImage }: PreviewProps)
     origCanvas.width = originalImage.width
     origCanvas.height = originalImage.height
     origCanvas.getContext('2d')!.putImageData(originalImage, 0, 0)
-    ctx.drawImage(origCanvas, 0, 30, w, h)
+    ctx.drawImage(origCanvas, 0, 30, exportW, exportH)
 
     const procCanvas = document.createElement('canvas')
-    procCanvas.width = w
-    procCanvas.height = h
+    procCanvas.width = processedImage.width
+    procCanvas.height = processedImage.height
     procCanvas.getContext('2d')!.putImageData(processedImage, 0, 0)
-    ctx.drawImage(procCanvas, w + 20, 30, w, h)
+    ctx.drawImage(procCanvas, exportW + 20, 30, exportW, exportH)
 
     ctx.fillStyle = '#0f172a'
-    ctx.font = 'bold 16px sans-serif'
-    ctx.fillText('Original Image', 10, 22)
-    ctx.fillText('Upscaled HD Image', w + 30, 22)
+    ctx.font = 'bold 14px sans-serif'
+    ctx.fillText('Original Image', 10, 20)
+    ctx.fillText('Upscaled HD Image', exportW + 30, 20)
 
-    const link = document.createElement('a')
-    link.download = `comparison-side-by-side-${Date.now()}.png`
-    link.href = canvas.toDataURL('image/png')
-    link.click()
+    canvas.toBlob((blob) => {
+      if (!blob) return
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.download = `comparison-side-by-side-${Date.now()}.png`
+      link.href = url
+      link.click()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    }, 'image/png')
   }
 
   return (
