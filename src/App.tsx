@@ -42,7 +42,7 @@ export default function App() {
         const width = detail.width as number
         const height = detail.height as number
 
-        if (!buf || buf.byteLength !== width * height * 4) {
+        if (!buf || buf.byteLength < width * height * 4) {
           console.error('Invalid image buffer size — aborting render')
           setStatus('error')
           return

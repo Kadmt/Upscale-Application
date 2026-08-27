@@ -485,14 +485,6 @@ self.onmessage = async (ev: MessageEvent) => {
           let targetW = Math.floor(srcW * targetScale);
           let targetH = Math.floor(srcH * targetScale);
 
-          if (targetScale === 8 || (msg.mode === 'document8k' && targetScale >= 4)) {
-            const min8KWidth = 7680;
-            if (targetW < min8KWidth) {
-              targetW = min8KWidth;
-              targetH = Math.round(targetW * (srcH / srcW));
-            }
-          }
-
           const srcU8 = new Uint8ClampedArray(msg.imageBuffer);
           const srcCanvas = new OffscreenCanvas(srcW, srcH);
           const sctx = srcCanvas.getContext('2d')!;
