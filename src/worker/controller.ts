@@ -29,13 +29,6 @@ export class InferenceController {
         this.onProgress?.(msg.progress, msg.message);
         break;
       case 'sessionInfo':
-        // log and forward session metadata for debugging
-        try {
-          console.log('inference: sessionInfo', msg.info);
-          if (msg.info && msg.info.human) console.log('sessionInfo.human:\n' + msg.info.human);
-        } catch (e) {
-          // ignore
-        }
         window.dispatchEvent(new CustomEvent('inference:sessionInfo', { detail: msg.info }));
         break;
       case 'tileResult':
