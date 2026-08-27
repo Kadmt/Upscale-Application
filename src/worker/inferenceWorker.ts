@@ -616,9 +616,15 @@ self.onmessage = async (ev: MessageEvent) => {
             const accY = new Float32Array(dstW * dstH).fill(0);
             const accW = new Float32Array(dstW * dstH).fill(0);
 
+            const totalTiles = Math.ceil(srcH / strideY) * Math.ceil(srcW / strideX);
+            let processedTiles = 0;
+
             for (let ty = 0; ty < srcH; ty += strideY) {
               for (let tx = 0; tx < srcW; tx += strideX) {
                 if (!currentTasks.has(msg.taskId)) break;
+                processedTiles++;
+                const ratio = Math.min(0.9, 0.1 + (processedTiles / Math.max(1, totalTiles)) * 0.8);
+
                 const tw = Math.min(modelW, srcW - tx);
                 const th = Math.min(modelH, srcH - ty);
                 let tileU8 = extractTile(tx, ty, tw, th);
@@ -626,22 +632,9 @@ self.onmessage = async (ev: MessageEvent) => {
                   tileU8 = reflectPadRGBA(tileU8, tw, th, modelW, modelH);
                 }
                 const yFloat = uint8ToFloat32Y(tileU8);
-                // debug: report input Y stats for this tile
-                try {
-                  let minIn = Infinity, maxIn = -Infinity, sumIn = 0;
-                  for (let i = 0; i < yFloat.length; i++) {
-                    const v = yFloat[i];
-                    if (v < minIn) minIn = v;
-                    if (v > maxIn) maxIn = v;
-                    sumIn += v;
-                  }
-                  const meanIn = sumIn / yFloat.length;
-                  const sampleIn = Array.from(yFloat.slice(0, 20));
-                  post({ kind: 'debug', taskId: msg.taskId, message: `tile input stats tx=${tx} ty=${ty} tw=${tw} th=${th} min=${minIn.toFixed(4)} max=${maxIn.toFixed(4)} mean=${meanIn.toFixed(4)} sample=${JSON.stringify(sampleIn.slice(0,6))}`, tx, ty, tw, th, minIn, maxIn, meanIn, sampleIn });
-                } catch (e) {}
                 const tensorNCHW = makeInputTensor(yFloat, modelW, modelH, 1);
                 try {
-                  post({ kind: 'progress', taskId: msg.taskId, message: `running tile ${tx},${ty} size=${tw}x${th}` });
+                  post({ kind: 'progress', taskId: msg.taskId, progress: ratio, message: `Running tile ${processedTiles}/${totalTiles}...` });
                   const feeds: AnyObject = {};
                   const inName = inputNames[0] || 'input';
                   feeds[inName] = tensorNCHW;
