@@ -378,7 +378,7 @@ function applyFacialPortraitEngine(
 ): Uint8ClampedArray {
   const len = rgba.length;
   const out = new Uint8ClampedArray(len);
-  const alpha = Math.min(1.2, Math.max(0.2, sharpness * 1.8));
+  const alpha = Math.min(2.5, Math.max(0.4, sharpness * 2.5));
 
   for (let y = 1; y < h - 1; y++) {
     const row = y * w;
@@ -400,7 +400,7 @@ function applyFacialPortraitEngine(
         // Bilateral Skin Smoothing: 5-point average to smooth facial skin texture & digital noise
         for (let c = 0; c < 3; c++) {
           const avg = (rgba[idx + c] * 2 + rgba[up + c] + rgba[dn + c] + rgba[lf + c] + rgba[rt + c]) / 6;
-          const detailBoost = (rgba[idx + c] - avg) * alpha * 0.5;
+          const detailBoost = (rgba[idx + c] - avg) * alpha * 0.6;
           out[idx + c] = Math.max(0, Math.min(255, Math.round(avg + detailBoost)));
         }
       } else {
@@ -437,8 +437,8 @@ function apply8KVectorDocumentEngine(
   const out = new Uint8ClampedArray(len);
 
   if (!isDoc) {
-    // Natural Photo Enhancement Profile: Edge Sharpening & Color Integrity
-    const alpha = Math.min(1.0, Math.max(0.0, sharpness * 1.5));
+    // Natural Photo Enhancement Profile: High-Contrast Edge Sharpening & Color Integrity
+    const alpha = Math.min(2.2, Math.max(0.3, sharpness * 2.2));
     for (let y = 1; y < h - 1; y++) {
       for (let x = 1; x < w - 1; x++) {
         const idx = (y * w + x) * 4;
