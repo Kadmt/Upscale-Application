@@ -616,6 +616,18 @@ self.onmessage = async (ev: MessageEvent) => {
               return out;
             }
 
+            // Pre-calculate fallback Y channel for 100% gapless coverage and zero-black-block safety
+            const fallbackSrcCanvas = new OffscreenCanvas(srcW, srcH);
+            const fsctx = fallbackSrcCanvas.getContext('2d')!;
+            fsctx.putImageData(new ImageData(new Uint8ClampedArray(srcU8), srcW, srcH), 0, 0);
+            const fallbackDstCanvas = new OffscreenCanvas(dstW, dstH);
+            const fdctx = fallbackDstCanvas.getContext('2d')!;
+            fdctx.imageSmoothingEnabled = true;
+            fdctx.imageSmoothingQuality = 'high';
+            fdctx.drawImage(fallbackSrcCanvas, 0, 0, dstW, dstH);
+            const fallbackRGBA = fdctx.getImageData(0, 0, dstW, dstH).data;
+            const fallbackY = uint8ToFloat32Y(fallbackRGBA);
+
             // accumulator arrays for Y and weights
             const accY = new Float32Array(dstW * dstH).fill(0);
             const accW = new Float32Array(dstW * dstH).fill(0);
@@ -637,6 +649,8 @@ self.onmessage = async (ev: MessageEvent) => {
                 }
                 const yFloat = uint8ToFloat32Y(tileU8);
                 const tensorNCHW = makeInputTensor(yFloat, modelW, modelH, 1);
+
+                let outData: Float32Array | null = null;
                 try {
                   post({ kind: 'progress', taskId: msg.taskId, progress: ratio, message: `Running tile ${processedTiles}/${totalTiles}...` });
                   const feeds: AnyObject = {};
@@ -645,16 +659,18 @@ self.onmessage = async (ev: MessageEvent) => {
                   const outMap = await session.run(feeds);
                   const outName = session.outputNames ? session.outputNames[0] : Object.keys(outMap)[0];
                   const outTensor = outMap[outName];
-                  const outData = outTensor.data as Float32Array; // outH*outW
+                  outData = outTensor.data as Float32Array;
 
-                  // Per-tile post-process: normalize 0..255 range to 0..1 if needed and clamp
-                  try {
-                    let tMin = Infinity, tMax = -Infinity;
-                    for (let ii = 0; ii < outData.length; ii++) {
-                      const vv = outData[ii];
-                      if (vv < tMin) tMin = vv;
-                      if (vv > tMax) tMax = vv;
-                    }
+                  // Check tile validity: if all 0s or NaN, discard outData so fallback tile is used
+                  let tMin = Infinity, tMax = -Infinity;
+                  for (let ii = 0; ii < outData.length; ii++) {
+                    const vv = outData[ii];
+                    if (vv < tMin) tMin = vv;
+                    if (vv > tMax) tMax = vv;
+                  }
+                  if (!Number.isFinite(tMin) || !Number.isFinite(tMax) || (tMin === 0 && tMax === 0)) {
+                    outData = null;
+                  } else {
                     const isScale255 = tMax > 1.5;
                     for (let ii = 0; ii < outData.length; ii++) {
                       let vv = isScale255 ? outData[ii] / 255.0 : outData[ii];
@@ -663,50 +679,57 @@ self.onmessage = async (ev: MessageEvent) => {
                       if (vv > 1) vv = 1;
                       outData[ii] = vv;
                     }
-                  } catch (e) {}
+                  }
+                } catch (tileErr) {
+                  // Soft fallback: use fallback Y channel for this tile
+                  outData = null;
+                }
 
-                  // debug: report output stats for this tile
-                  try {
-                    let minOut = Infinity, maxOut = -Infinity, sumOut = 0;
-                    for (let i = 0; i < outData.length; i++) {
-                      const v = outData[i];
-                      if (v < minOut) minOut = v;
-                      if (v > maxOut) maxOut = v;
-                      sumOut += v;
-                    }
-                    const meanOut = sumOut / outData.length;
-                    const sampleOut = Array.from(outData.slice(0, 20));
-                    post({ kind: 'debug', taskId: msg.taskId, message: `tile output stats tx=${tx} ty=${ty} out=${outW}x${outH} min=${minOut.toFixed(4)} max=${maxOut.toFixed(4)} mean=${meanOut.toFixed(4)} sample=${JSON.stringify(sampleOut.slice(0,6))}`, tx, ty, outW, outH, minOut, maxOut, meanOut, sampleOut });
-                  } catch (e) {}
+                const dstX = Math.round(tx * scaleX);
+                const dstY = Math.round(ty * scaleY);
 
-                  // compute destination top-left in output coords
-                  const dstX = Math.round(tx * scaleX);
-                  const dstY = Math.round(ty * scaleY);
-
+                if (outData) {
                   for (let r = 0; r < outH; r++) {
                     const gy = dstY + r;
                     if (gy < 0 || gy >= dstH) continue;
+                    // 2D tent weight for smooth tile overlap blending
+                    const wy = Math.sin((r + 0.5) / outH * Math.PI);
                     for (let ccol = 0; ccol < outW; ccol++) {
                       const gx = dstX + ccol;
                       if (gx < 0 || gx >= dstW) continue;
+                      const wx = Math.sin((ccol + 0.5) / outW * Math.PI);
+                      const w = wy * wx;
                       const v = outData[r * outW + ccol];
                       const idx = gy * dstW + gx;
-                      accY[idx] += v;
-                      accW[idx] += 1;
+                      accY[idx] += v * w;
+                      accW[idx] += w;
                     }
                   }
-                } catch (tileErr: any) {
-                  post({ kind: 'progress', taskId: msg.taskId, message: `tile error ${tx},${ty}: ${tileErr?.message || String(tileErr)}` });
-                  throw tileErr;
+                } else {
+                  // Fallback tile: blend fallback Y channel into accumulator
+                  for (let r = 0; r < outH; r++) {
+                    const gy = dstY + r;
+                    if (gy < 0 || gy >= dstH) continue;
+                    const wy = Math.sin((r + 0.5) / outH * Math.PI);
+                    for (let ccol = 0; ccol < outW; ccol++) {
+                      const gx = dstX + ccol;
+                      if (gx < 0 || gx >= dstW) continue;
+                      const wx = Math.sin((ccol + 0.5) / outW * Math.PI);
+                      const w = wy * wx;
+                      const idx = gy * dstW + gx;
+                      accY[idx] += fallbackY[idx] * w;
+                      accW[idx] += w;
+                    }
+                  }
                 }
               }
               if (!currentTasks.has(msg.taskId)) break;
             }
 
-            // normalize accumulators into outY
+            // normalize accumulators into outY (filling any 0-weight pixels with fallbackY)
             for (let i = 0; i < dstW * dstH; i++) {
               const w = accW[i];
-              outY[i] = w > 0 ? (accY[i] / w) : 0;
+              outY[i] = w > 0 ? (accY[i] / w) : fallbackY[i];
             }
 
             // (debug Y return moved later to after normalization)
