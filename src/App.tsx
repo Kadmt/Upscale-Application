@@ -39,16 +39,17 @@ export default function App() {
       const detail = (e as CustomEvent).detail
       try {
         const buf = detail.imageBuffer as ArrayBuffer
-        const width = detail.width as number
-        const height = detail.height as number
+        const width = Number(detail.width)
+        const height = Number(detail.height)
+        const expectedBytes = width * height * 4
 
-        if (!buf || buf.byteLength < width * height * 4) {
-          console.error('Invalid image buffer size — aborting render')
+        if (!buf || buf.byteLength < expectedBytes) {
+          console.error('Invalid image buffer size — aborting render', buf?.byteLength, expectedBytes)
           setStatus('error')
           return
         }
 
-        const u8 = new Uint8ClampedArray(buf)
+        const u8 = new Uint8ClampedArray(buf, 0, expectedBytes)
         const img = new ImageData(u8, width, height)
 
         setProcessedImage(img)

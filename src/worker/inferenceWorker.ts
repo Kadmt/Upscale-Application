@@ -458,8 +458,9 @@ self.onmessage = async (ev: MessageEvent) => {
 
           const finalU8 = apply8KVectorDocumentEngine(resizedData, targetW, targetH, sharpnessAmount, darknessAmount, roundnessAmount, isDoc);
 
+          const outBuffer = finalU8.buffer.slice(finalU8.byteOffset, finalU8.byteOffset + targetW * targetH * 4);
           post({ kind: 'progress', taskId: msg.taskId, progress: 1.0, message: 'Complete' });
-          post({ kind: 'imageResult', taskId: msg.taskId, imageBuffer: finalU8.buffer, width: targetW, height: targetH }, [finalU8.buffer]);
+          post({ kind: 'imageResult', taskId: msg.taskId, imageBuffer: outBuffer, width: targetW, height: targetH }, [outBuffer]);
         } catch (e: any) {
           post({ kind: 'error', taskId: msg.taskId, message: 'Upscale failed: ' + String(e) });
         } finally {
