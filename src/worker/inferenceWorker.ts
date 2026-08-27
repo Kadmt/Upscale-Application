@@ -2,9 +2,10 @@
 // WebWorker for running ONNXRuntime-Web inference (WebGPU preferred, WASM fallback)
 import * as ort from 'onnxruntime-web'
 
-// Configure WASM static asset paths for ONNX Runtime Web via local dev server route /ort-files/
+// Configure WASM static asset paths for ONNX Runtime Web via absolute origin
 if (ort?.env?.wasm) {
-  ort.env.wasm.wasmPaths = '/ort-files/'
+  const origin = typeof self !== 'undefined' && self.location && self.location.origin ? self.location.origin : '';
+  ort.env.wasm.wasmPaths = origin + '/ort-files/';
 }
 
 type AnyObject = Record<string, any>;
@@ -331,13 +332,15 @@ self.onmessage = async (ev: MessageEvent) => {
         if (msg.modelArrayBuffer) {
           modelBuffer = msg.modelArrayBuffer;
         } else if (msg.modelUrl) {
-          const r = await fetch(msg.modelUrl);
+          const origin = typeof self !== 'undefined' && self.location && self.location.origin ? self.location.origin : '';
+          const fullUrl = new URL(msg.modelUrl, origin || location.origin).href;
+          const r = await fetch(fullUrl);
           if (!r.ok) {
-            throw new Error(`Failed to fetch model from ${msg.modelUrl} (status: ${r.status})`);
+            throw new Error(`Failed to fetch model from ${fullUrl} (status: ${r.status})`);
           }
           modelBuffer = await r.arrayBuffer();
           if (!modelBuffer || modelBuffer.byteLength === 0) {
-            throw new Error(`Model file at ${msg.modelUrl} is empty (0 bytes).`);
+            throw new Error(`Model file at ${fullUrl} is empty (0 bytes).`);
           }
         } else {
           throw new Error('init requires modelUrl or modelArrayBuffer');
