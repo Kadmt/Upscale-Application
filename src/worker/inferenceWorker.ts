@@ -510,8 +510,9 @@ self.onmessage = async (ev: MessageEvent) => {
             const resizedData = dctx.getImageData(0, 0, targetW, targetH).data;
             const sharpnessAmount = msg.sharpness !== undefined ? msg.sharpness : 0.3;
             const darknessAmount = msg.darkness !== undefined ? msg.darkness : 0.18;
+            const roundnessAmount = msg.roundness !== undefined ? msg.roundness : 0.6;
             const isDoc = msg.mode === 'document8k' || msg.mode === undefined || msg.mode === 'text';
-            const finalU8 = apply8KVectorDocumentEngine(resizedData, targetW, targetH, sharpnessAmount, darknessAmount, isDoc);
+            const finalU8 = apply8KVectorDocumentEngine(resizedData, targetW, targetH, sharpnessAmount, darknessAmount, roundnessAmount, isDoc);
 
             post({ kind: 'progress', taskId: msg.taskId, progress: 1.0, message: 'Complete' });
             post({ kind: 'imageResult', taskId: msg.taskId, imageBuffer: finalU8.buffer, width: targetW, height: targetH }, [finalU8.buffer]);
@@ -908,12 +909,13 @@ self.onmessage = async (ev: MessageEvent) => {
               h: number,
               strength = 0.3,
               darknessFactor = 0.18,
+              roundnessStrength = 0.6,
               isDocument8K = true
             ) {
-              if (strength <= 0 && darknessFactor <= 0 && !isDocument8K) return rgba;
+              if (strength <= 0 && darknessFactor <= 0 && roundnessStrength <= 0 && !isDocument8K) return rgba;
               const out = new Uint8ClampedArray(rgba.length);
 
-              // Calculate document background luma estimate
+              // 1. Calculate document background luma estimate
               let bgSum = 0;
               let bgCnt = 0;
               for (let i = 0; i < rgba.length; i += 16) {
@@ -925,6 +927,50 @@ self.onmessage = async (ev: MessageEvent) => {
               }
               const paperBg = bgCnt > 0 ? bgSum / bgCnt : 215;
 
+              // Pre-calculate 3x3 min-luma matrix for Morphological Ink Solidification (Bơm đầy nét chữ & Lấp ruột rỗng)
+              const tempU8 = new Uint8ClampedArray(rgba.length);
+
+              if (roundnessStrength > 0 && isDocument8K) {
+                for (let y = 0; y < h; y++) {
+                  const y0 = Math.max(0, y - 1) * w;
+                  const y1 = Math.min(h - 1, y + 1) * w;
+                  const yw = y * w;
+
+                  for (let x = 0; x < w; x++) {
+                    const x0 = Math.max(0, x - 1);
+                    const x1 = Math.min(w - 1, x + 1);
+                    const idx = (yw + x) * 4;
+
+                    const iTL = (y0 + x0) * 4; const iTC = (y0 + x) * 4; const iTR = (y0 + x1) * 4;
+                    const iCL = (yw + x0) * 4; const iCR = (yw + x1) * 4;
+                    const iBL = (y1 + x0) * 4; const iBC = (y1 + x) * 4; const iBR = (y1 + x1) * 4;
+
+                    for (let c = 0; c < 3; c++) {
+                      const center = rgba[idx + c];
+                      // Find minimum neighbor value (darkest ink around)
+                      const minInk = Math.min(
+                        center,
+                        rgba[iTL + c], rgba[iTC + c], rgba[iTR + c],
+                        rgba[iCL + c],                rgba[iCR + c],
+                        rgba[iBL + c], rgba[iBC + c], rgba[iBR + c]
+                      );
+
+                      // Smooth morphological dilation for text ink pixels
+                      if (center < paperBg - 15) {
+                        const blend = roundnessStrength * 0.35;
+                        tempU8[idx + c] = Math.round(center * (1.0 - blend) + minInk * blend);
+                      } else {
+                        tempU8[idx + c] = center;
+                      }
+                    }
+                    tempU8[idx + 3] = rgba[idx + 3];
+                  }
+                }
+              } else {
+                tempU8.set(rgba);
+              }
+
+              // 2. Unsharp Masking + Hermite Vector Smoothstep Contour Fitting
               for (let y = 0; y < h; y++) {
                 const y0 = Math.max(0, y - 1) * w;
                 const y1 = Math.min(h - 1, y + 1) * w;
@@ -940,24 +986,27 @@ self.onmessage = async (ev: MessageEvent) => {
                   const iBC = (y1 + x) * 4;
 
                   for (let c = 0; c < 3; c++) {
-                    const center = rgba[idx + c];
+                    const center = tempU8[idx + c];
                     
-                    // 1. Unsharp Mask for edge definition (preserving dots, periods & accents)
+                    // Unsharp Mask for edge definition (preserving fine dots and accents)
                     let val = center;
                     if (strength > 0) {
-                      const blur = (rgba[iTC + c] + rgba[iCL + c] + rgba[iCR + c] + rgba[iBC + c] + 4 * center) / 8;
+                      const blur = (tempU8[iTC + c] + tempU8[iCL + c] + tempU8[iCR + c] + tempU8[iBC + c] + 4 * center) / 8;
                       const diff = center - blur;
                       val = center + strength * 0.45 * diff;
                     }
 
                     if (isDocument8K) {
-                      // 2. High-Contrast Pure White Background Whitening (#FFFFFF)
-                      if (val > paperBg - 25) {
-                        const factor = Math.min(1.0, (val - (paperBg - 25)) / Math.max(1, 255 - (paperBg - 25)));
+                      // High-Contrast Pure White Background Whitening (#FFFFFF)
+                      if (val > paperBg - 20) {
+                        const factor = Math.min(1.0, (val - (paperBg - 20)) / Math.max(1, 255 - (paperBg - 20)));
                         val = val + (255 - val) * Math.pow(factor, 0.5);
-                      } else if (val < 140) {
-                        // 3. Solid Deep Black Ink Solidification (#000000)
-                        const boost = (1.0 - (val / 140.0) * (val / 140.0)) * Math.max(darknessFactor, 0.22);
+                      } else if (val < 155) {
+                        // Hermite Smoothstep Anti-Aliased Contour Vector Curve Fitting
+                        const t = Math.max(0, Math.min(1.0, val / 155.0));
+                        // Hermite curve S(t) = 3t^2 - 2t^3 creates smooth rounded curves
+                        const smoothFactor = 3 * t * t - 2 * t * t * t;
+                        const boost = (1.0 - smoothFactor) * Math.max(darknessFactor, 0.28);
                         val = val * (1.0 - boost);
                       }
                     } else if (darknessFactor > 0 && val < 175) {
@@ -968,7 +1017,7 @@ self.onmessage = async (ev: MessageEvent) => {
 
                     out[idx + c] = Math.max(0, Math.min(255, Math.round(val)));
                   }
-                  out[idx + 3] = rgba[idx + 3];
+                  out[idx + 3] = tempU8[idx + 3];
                 }
               }
               return out;
@@ -976,8 +1025,9 @@ self.onmessage = async (ev: MessageEvent) => {
 
             const sharpnessAmount = msg.sharpness !== undefined ? msg.sharpness : 0.3;
             const darknessAmount = msg.darkness !== undefined ? msg.darkness : 0.18;
+            const roundnessAmount = msg.roundness !== undefined ? msg.roundness : 0.6;
             const isDoc = msg.mode === 'document8k' || msg.mode === undefined || msg.mode === 'text';
-            const sharpenedOutU8 = apply8KVectorDocumentEngine(outU8, dstW, dstH, sharpnessAmount, darknessAmount, isDoc);
+            const sharpenedOutU8 = apply8KVectorDocumentEngine(outU8, dstW, dstH, sharpnessAmount, darknessAmount, roundnessAmount, isDoc);
 
             // Resample to target user scale (2x, 3x, 4x, 8K Ultra)
             const targetScale = msg.scale || 2;

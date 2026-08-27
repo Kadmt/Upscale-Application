@@ -74,6 +74,7 @@ export class InferenceController {
     scale = 2,
     sharpness = 0.3,
     darkness = 0.18,
+    roundness = 0.6,
     mode: 'general' | 'document8k' = 'document8k',
     tileSize?: number
   ) {
@@ -88,6 +89,7 @@ export class InferenceController {
       scale,
       sharpness,
       darkness,
+      roundness,
       mode,
       tileSize,
     };
