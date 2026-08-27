@@ -64,8 +64,10 @@ export default function App() {
     const onError = (e: Event) => {
       const detail = (e as CustomEvent).detail
       console.error('Inference error:', detail)
-      setStatus('error')
-      setProgressMsg(detail?.message || 'Error occurred during neural inference')
+      if (detail && detail.taskId) {
+        setStatus('error')
+        setProgressMsg(detail?.message || 'Error occurred during neural inference')
+      }
     }
 
     window.addEventListener('inference:image', onImage as any)

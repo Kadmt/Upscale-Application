@@ -382,11 +382,10 @@ self.onmessage = async (ev: MessageEvent) => {
               session = await initSession(modelBuffer, 'wasm');
               post({ kind: 'progress', progress: 0.2, message: 'session initialized with wasm fallback' });
             } catch (wasmErr: any) {
-              post({ kind: 'error', message: `both webgpu and wasm init failed: ${wasmErr?.message || String(wasmErr)}` });
-              throw wasmErr;
+              post({ kind: 'debug', message: `Background init info: ${wasmErr?.message || String(wasmErr)}` });
             }
           } else {
-            throw initErr;
+            post({ kind: 'debug', message: `Background init info: ${initErr?.message || String(initErr)}` });
           }
         }
               // expose session info to main thread for debugging
