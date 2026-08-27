@@ -2,10 +2,13 @@
 // WebWorker for running ONNXRuntime-Web inference (WebGPU preferred, WASM fallback)
 import * as ort from 'onnxruntime-web'
 
-// Configure WASM static asset paths for ONNX Runtime Web via absolute origin
-if (ort?.env?.wasm) {
-  const origin = typeof self !== 'undefined' && self.location && self.location.origin ? self.location.origin : '';
-  ort.env.wasm.wasmPaths = origin + '/ort-files/';
+// Configure WASM static asset paths & log level for ONNX Runtime Web
+if (ort?.env) {
+  ort.env.logLevel = 'error';
+  if (ort.env.wasm) {
+    const origin = typeof self !== 'undefined' && self.location && self.location.origin ? self.location.origin : '';
+    ort.env.wasm.wasmPaths = origin + '/ort-files/';
+  }
 }
 
 type AnyObject = Record<string, any>;
