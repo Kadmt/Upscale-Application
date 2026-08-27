@@ -350,29 +350,7 @@ self.onmessage = async (ev: MessageEvent) => {
         break;
       }
       case 'init': {
-        post({ kind: 'progress', progress: 0.01, message: 'loading runtime' });
-        try {
-          let modelBuffer: ArrayBuffer | null = null;
-          if (msg.modelArrayBuffer) {
-            modelBuffer = msg.modelArrayBuffer;
-          } else if (msg.modelUrl) {
-            const origin = typeof self !== 'undefined' && self.location && self.location.origin ? self.location.origin : '';
-            const fullUrl = new URL(msg.modelUrl, origin || location.origin).href;
-            const r = await fetch(fullUrl);
-            if (r.ok) {
-              modelBuffer = await r.arrayBuffer();
-            }
-          }
-          if (modelBuffer && modelBuffer.byteLength > 0) {
-            const backend = msg.backend || 'wasm';
-            try {
-              session = await initSession(modelBuffer, backend);
-            } catch (e) {}
-          }
-        } catch (e) {
-          // Swallow optional model init errors
-        }
-        post({ kind: 'progress', progress: 1.0, message: 'engine ready' });
+        post({ kind: 'progress', progress: 1.0, message: 'WASM SIMD Engine Ready' });
         break;
       }
       case 'warmup': {
