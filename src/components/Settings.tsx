@@ -39,26 +39,25 @@ export default function Settings({
 
       {/* Mode Selection Profile */}
       <div className="control-group">
-        <label className="control-label" style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, display: 'block' }}>
-          🎯 Chọn Chế độ AI Phù hợp Nội dung (AI Enhancement Profile)
+        <label className="control-label" style={{ fontWeight: 600, fontSize: 12, marginBottom: 8, display: 'block', color: '#475569' }}>
+          CHỌN CHẾ ĐỘ XỬ LÝ (ENHANCEMENT PROFILE)
         </label>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
           <button
             type="button"
             className={`profile-card ${mode === 'document8k' ? 'active' : ''}`}
             style={{
-              padding: '12px 10px',
-              borderRadius: 10,
-              border: mode === 'document8k' ? '2px solid #2563eb' : '1px solid #cbd5e1',
-              background: mode === 'document8k' ? '#eff6ff' : '#ffffff',
+              padding: '10px 10px',
+              borderRadius: 6,
+              border: mode === 'document8k' ? '2px solid #0f172a' : '1px solid #e2e8f0',
+              background: mode === 'document8k' ? '#f8fafc' : '#ffffff',
               textAlign: 'left',
               cursor: 'pointer',
-              boxShadow: mode === 'document8k' ? '0 4px 12px rgba(37, 99, 235, 0.15)' : 'none',
-              transition: 'all 0.2s ease',
+              transition: 'all 0.15s ease',
             }}
             onClick={() => onModeChange('document8k')}
           >
-            <div style={{ fontSize: 14, fontWeight: 700, color: mode === 'document8k' ? '#1e40af' : '#1e293b', marginBottom: 4 }}>📜 8K Văn Bản</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: mode === 'document8k' ? '#0f172a' : '#334155', marginBottom: 2 }}>📜 8K Văn Bản</div>
             <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.3 }}>Scan PDF, Sách, Chữ viết tay</div>
           </button>
 
@@ -66,18 +65,17 @@ export default function Settings({
             type="button"
             className={`profile-card ${mode === 'general' ? 'active' : ''}`}
             style={{
-              padding: '12px 10px',
-              borderRadius: 10,
-              border: mode === 'general' ? '2px solid #2563eb' : '1px solid #cbd5e1',
-              background: mode === 'general' ? '#eff6ff' : '#ffffff',
+              padding: '10px 10px',
+              borderRadius: 6,
+              border: mode === 'general' ? '2px solid #0f172a' : '1px solid #e2e8f0',
+              background: mode === 'general' ? '#f8fafc' : '#ffffff',
               textAlign: 'left',
               cursor: 'pointer',
-              boxShadow: mode === 'general' ? '0 4px 12px rgba(37, 99, 235, 0.15)' : 'none',
-              transition: 'all 0.2s ease',
+              transition: 'all 0.15s ease',
             }}
             onClick={() => onModeChange('general')}
           >
-            <div style={{ fontSize: 14, fontWeight: 700, color: mode === 'general' ? '#1e40af' : '#1e293b', marginBottom: 4 }}>🖼️ Ảnh & Cảnh</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: mode === 'general' ? '#0f172a' : '#334155', marginBottom: 2 }}>🖼️ Ảnh & Cảnh</div>
             <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.3 }}>Phong cảnh, Vật thể, Kiến trúc</div>
           </button>
 
@@ -85,18 +83,17 @@ export default function Settings({
             type="button"
             className={`profile-card ${mode === 'portrait' ? 'active' : ''}`}
             style={{
-              padding: '12px 10px',
-              borderRadius: 10,
-              border: mode === 'portrait' ? '2px solid #2563eb' : '1px solid #cbd5e1',
-              background: mode === 'portrait' ? '#eff6ff' : '#ffffff',
+              padding: '10px 10px',
+              borderRadius: 6,
+              border: mode === 'portrait' ? '2px solid #0f172a' : '1px solid #e2e8f0',
+              background: mode === 'portrait' ? '#f8fafc' : '#ffffff',
               textAlign: 'left',
               cursor: 'pointer',
-              boxShadow: mode === 'portrait' ? '0 4px 12px rgba(37, 99, 235, 0.15)' : 'none',
-              transition: 'all 0.2s ease',
+              transition: 'all 0.15s ease',
             }}
             onClick={() => onModeChange('portrait')}
           >
-            <div style={{ fontSize: 14, fontWeight: 700, color: mode === 'portrait' ? '#1e40af' : '#1e293b', marginBottom: 4 }}>👤 Chân Dung AI</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: mode === 'portrait' ? '#0f172a' : '#334155', marginBottom: 2 }}>👤 Chân Dung AI</div>
             <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.3 }}>Khuôn mặt, Ánh mắt, Làn da</div>
           </button>
         </div>

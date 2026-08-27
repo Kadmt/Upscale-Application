@@ -378,7 +378,7 @@ function applyFacialPortraitEngine(
 ): Uint8ClampedArray {
   const len = rgba.length;
   const out = new Uint8ClampedArray(len);
-  const alpha = Math.min(2.5, Math.max(0.4, sharpness * 2.5));
+  const alpha = Math.min(3.2, Math.max(0.6, sharpness * 3.2));
 
   for (let y = 1; y < h - 1; y++) {
     const row = y * w;
@@ -388,8 +388,8 @@ function applyFacialPortraitEngine(
       const g = rgba[idx + 1];
       const b = rgba[idx + 2];
 
-      // Facial Skin Chrominance Bounds Detection
-      const isSkin = r > g && g > b && (r - g) > 15 && (r - b) > 20;
+      // Dynamic Chrominance Analysis for Skin Regions
+      const isSkin = r > g && g > b && (r - g) > 10 && (r - b) > 12;
 
       const up = ((y - 1) * w + x) * 4;
       const dn = ((y + 1) * w + x) * 4;
@@ -397,18 +397,24 @@ function applyFacialPortraitEngine(
       const rt = (row + (x + 1)) * 4;
 
       if (isSkin) {
-        // Bilateral Skin Smoothing: 5-point average to smooth facial skin texture & digital noise
+        // Bilateral Skin Smoothing: Reduce skin noise & smooth complexion
         for (let c = 0; c < 3; c++) {
           const avg = (rgba[idx + c] * 2 + rgba[up + c] + rgba[dn + c] + rgba[lf + c] + rgba[rt + c]) / 6;
-          const detailBoost = (rgba[idx + c] - avg) * alpha * 0.6;
+          const detailBoost = (rgba[idx + c] - avg) * alpha * 0.4;
           out[idx + c] = Math.max(0, Math.min(255, Math.round(avg + detailBoost)));
         }
       } else {
-        // Eyes, Eyebrows, Lips & Hair High-Pass Edge Contrast Booster
+        // 2D Spatial Gradient Operator for Eyes, Glasses Frames, Eyebrows, Lips, Hair & Certificates
         for (let c = 0; c < 3; c++) {
           const val = rgba[idx + c];
+          const gx = rgba[rt + c] - rgba[lf + c];
+          const gy = rgba[dn + c] - rgba[up + c];
+          const grad = Math.sqrt(gx * gx + gy * gy);
           const laplacian = 4 * val - rgba[up + c] - rgba[dn + c] - rgba[lf + c] - rgba[rt + c];
-          out[idx + c] = Math.max(0, Math.min(255, Math.round(val + alpha * laplacian)));
+
+          // High-frequency feature contrast boost
+          const boost = grad > 15 ? alpha * 1.3 : alpha;
+          out[idx + c] = Math.max(0, Math.min(255, Math.round(val + boost * laplacian)));
         }
       }
       out[idx + 3] = rgba[idx + 3];
