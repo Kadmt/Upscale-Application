@@ -10,7 +10,7 @@ async function prepareModels() {
     return
   }
 
-  const modelFiles = ['edsr.onnx', 'fsrcnn.onnx', 'real-esrgan.onnx']
+  const modelFiles = ['edsr.onnx', 'fsrcnn.onnx', 'real-esrgan.onnx', 'codeformer.onnx', 'gfpgan.onnx']
   for (const name of modelFiles) {
     const target = path.join(modelsDir, name)
     let needsCopy = false
