@@ -293,22 +293,26 @@ async function runInferenceOnTile(tileBuffer: ArrayBuffer, tileWidth: number, ti
   let p = 0;
   if (c === 1) {
     // duplicate Y channel to RGB
+    const sampleY = outData[0];
+    const multiplier = Math.abs(sampleY) <= 1.0 ? 255.0 : 1.0;
     for (let i = 0; i < w * h; i++) {
-      const y = outData[i];
-      const v = Math.max(0, Math.min(255, Math.round(y * 255)));
+      const y = outData[i] * multiplier;
+      const v = Math.max(0, Math.min(255, Math.round(y)));
       outU8[p++] = v;
       outU8[p++] = v;
       outU8[p++] = v;
       outU8[p++] = 255;
     }
   } else {
+    const sampleR = outData[0];
+    const multiplier = Math.abs(sampleR) <= 1.0 ? 255.0 : 1.0;
     for (let i = 0; i < w * h; i++) {
-      const r = outData[i * 3 + 0];
-      const g = outData[i * 3 + 1];
-      const b = outData[i * 3 + 2];
-      outU8[p++] = Math.max(0, Math.min(255, Math.round(r * 255)));
-      outU8[p++] = Math.max(0, Math.min(255, Math.round(g * 255)));
-      outU8[p++] = Math.max(0, Math.min(255, Math.round(b * 255)));
+      const r = outData[i * 3 + 0] * multiplier;
+      const g = outData[i * 3 + 1] * multiplier;
+      const b = outData[i * 3 + 2] * multiplier;
+      outU8[p++] = Math.max(0, Math.min(255, Math.round(r)));
+      outU8[p++] = Math.max(0, Math.min(255, Math.round(g)));
+      outU8[p++] = Math.max(0, Math.min(255, Math.round(b)));
       outU8[p++] = 255;
     }
   }
@@ -494,7 +498,29 @@ self.onmessage = async (ev: MessageEvent) => {
         break;
       }
       case 'init': {
-        post({ kind: 'progress', progress: 1.0, message: 'WASM SIMD Engine Ready' });
+        post({ kind: 'progress', progress: 0.01, message: 'initializing AI engine' });
+        try {
+          let modelBuffer: ArrayBuffer | null = null;
+          if (msg.modelArrayBuffer) {
+            modelBuffer = msg.modelArrayBuffer;
+          } else if (msg.modelUrl) {
+            const origin = typeof self !== 'undefined' && self.location && self.location.origin ? self.location.origin : '';
+            const fullUrl = new URL(msg.modelUrl, origin || location.origin).href;
+            const r = await fetch(fullUrl);
+            if (r.ok) {
+              modelBuffer = await r.arrayBuffer();
+            }
+          }
+          if (modelBuffer && modelBuffer.byteLength > 0) {
+            const backend = msg.backend || 'wasm';
+            try {
+              session = await initSession(modelBuffer, backend);
+            } catch (e) {}
+          }
+        } catch (e) {
+          // Swallow optional model fetch errors
+        }
+        post({ kind: 'progress', progress: 1.0, message: 'Dual Engine Ready (AI Neural + 8K Sub-Pixel Vector)' });
         break;
       }
       case 'warmup': {

@@ -30,7 +30,7 @@ export default function App() {
       })
 
       ;(window as any).__inferenceController = controllerRef.current
-      controllerRef.current.init('')
+      controllerRef.current.init('/models/super-resolution-10.onnx')
     }
   }, [])
 
