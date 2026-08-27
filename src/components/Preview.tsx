@@ -14,20 +14,49 @@ export default function Preview({ originalImage, processedImage }: PreviewProps)
 
   const activeImage = processedImage || originalImage
 
+  const cachedOrigCanvas = useRef<HTMLCanvasElement | null>(null)
+  const cachedProcCanvas = useRef<HTMLCanvasElement | null>(null)
+
+  // Cache Original Canvas whenever originalImage changes
+  useEffect(() => {
+    if (!originalImage) {
+      cachedOrigCanvas.current = null
+      return
+    }
+    const c = document.createElement('canvas')
+    c.width = originalImage.width
+    c.height = originalImage.height
+    c.getContext('2d')!.putImageData(originalImage, 0, 0)
+    cachedOrigCanvas.current = c
+  }, [originalImage])
+
+  // Cache Processed Canvas whenever processedImage changes
+  useEffect(() => {
+    if (!processedImage) {
+      cachedProcCanvas.current = null
+      return
+    }
+    const c = document.createElement('canvas')
+    c.width = processedImage.width
+    c.height = processedImage.height
+    c.getContext('2d')!.putImageData(processedImage, 0, 0)
+    cachedProcCanvas.current = c
+  }, [processedImage])
+
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas || !activeImage) return
 
     const width = activeImage.width
     const height = activeImage.height
-    canvas.width = width
-    canvas.height = height
+    if (canvas.width !== width) canvas.width = width
+    if (canvas.height !== height) canvas.height = height
 
     const ctx = canvas.getContext('2d')!
 
-    if (originalImage && processedImage) {
-      // 1. Render Processed HD Image on full canvas
-      ctx.putImageData(processedImage, 0, 0)
+    if (cachedProcCanvas.current && cachedOrigCanvas.current) {
+      // 1. Render Processed HD Image from GPU cache
+      ctx.drawImage(cachedProcCanvas.current, 0, 0, width, height)
 
       // 2. Render Original Image on left side clipped to splitPos%
       const splitX = Math.round((splitPos / 100) * width)
@@ -36,17 +65,15 @@ export default function Preview({ originalImage, processedImage }: PreviewProps)
         ctx.beginPath()
         ctx.rect(0, 0, splitX, height)
         ctx.clip()
-
-        const tmp = document.createElement('canvas')
-        tmp.width = originalImage.width
-        tmp.height = originalImage.height
-        tmp.getContext('2d')!.putImageData(originalImage, 0, 0)
-
         ctx.imageSmoothingEnabled = true
         ctx.imageSmoothingQuality = 'high'
-        ctx.drawImage(tmp, 0, 0, width, height)
+        ctx.drawImage(cachedOrigCanvas.current, 0, 0, width, height)
         ctx.restore()
       }
+    } else if (cachedProcCanvas.current) {
+      ctx.drawImage(cachedProcCanvas.current, 0, 0, width, height)
+    } else if (cachedOrigCanvas.current) {
+      ctx.drawImage(cachedOrigCanvas.current, 0, 0, width, height)
     } else {
       ctx.putImageData(activeImage, 0, 0)
     }

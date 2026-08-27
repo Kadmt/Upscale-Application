@@ -409,13 +409,13 @@ function apply8KVectorDocumentEngine(
   // 8K Document Scan Profile: 3x3 Morphological Dilation + Hermite Vector Curve Smoothing + Ink Solidification
   const threshold = 180 - darkness * 60;
   
-  // Step 1: Compute Luminance map
-  const lumaMap = new Float32Array(w * h);
+  // Step 1: Compute Luminance map using fast Uint8Array integer bit-shifts
+  const lumaMap = new Uint8Array(w * h);
   for (let y = 0; y < h; y++) {
     const row = y * w;
     for (let x = 0; x < w; x++) {
       const idx = (row + x) * 4;
-      lumaMap[row + x] = 0.299 * rgba[idx] + 0.587 * rgba[idx + 1] + 0.114 * rgba[idx + 2];
+      lumaMap[row + x] = (rgba[idx] * 77 + rgba[idx + 1] * 150 + rgba[idx + 2] * 29) >> 8;
     }
   }
 
