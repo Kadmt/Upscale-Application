@@ -4,12 +4,10 @@ interface SettingsProps {
   scale: number
   sharpness: number
   darkness: number
-  roundness: number
   mode: 'general' | 'document8k'
   onScaleChange: (scale: number) => void
   onSharpnessChange: (sharpness: number) => void
   onDarknessChange: (darkness: number) => void
-  onRoundnessChange: (roundness: number) => void
   onModeChange: (mode: 'general' | 'document8k') => void
 }
 
@@ -17,12 +15,10 @@ export default function Settings({
   scale,
   sharpness,
   darkness,
-  roundness,
   mode,
   onScaleChange,
   onSharpnessChange,
   onDarknessChange,
-  onRoundnessChange,
   onModeChange,
 }: SettingsProps) {
   const [showAdvanced, setShowAdvanced] = useState(false)
@@ -89,40 +85,32 @@ export default function Settings({
           className="btn-toggle-advanced"
           onClick={() => setShowAdvanced(!showAdvanced)}
         >
-          {showAdvanced ? '▼ Nâng cao (Thu gọn)' : '▶ Tùy chỉnh nâng cao (Độ tròn đầy / Độ nét / Độ đậm)'}
+          {showAdvanced
+            ? '▼ Nâng cao (Thu gọn)'
+            : mode === 'document8k'
+            ? '▶ Tùy chỉnh nâng cao (Độ đậm / Độ nét)'
+            : '▶ Tùy chỉnh nâng cao (Độ nét chi tiết)'}
         </button>
 
         {showAdvanced && (
           <div className="advanced-panel">
-            <div className="control-group" style={{ marginTop: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <label className="control-label" style={{ margin: 0 }}>⭕ Độ Tròn Đầy Nét Chữ</label>
-                <span style={{ fontSize: 12, fontWeight: 700, color: '#7c3aed' }}>{roundness}%</span>
+            {/* Show Text Darkness control ONLY for Document mode */}
+            {mode === 'document8k' && (
+              <div className="control-group" style={{ marginTop: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <label className="control-label" style={{ margin: 0 }}>✒️ Độ Đậm Nét Chữ</label>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#059669' }}>{darkness}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="40"
+                  step="5"
+                  value={darkness}
+                  onChange={(e) => onDarknessChange(Number(e.target.value))}
+                />
               </div>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                step="5"
-                value={roundness}
-                onChange={(e) => onRoundnessChange(Number(e.target.value))}
-              />
-            </div>
-
-            <div className="control-group" style={{ marginTop: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <label className="control-label" style={{ margin: 0 }}>✒️ Độ Đậm Nét Chữ</label>
-                <span style={{ fontSize: 12, fontWeight: 700, color: '#059669' }}>{darkness}%</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="40"
-                step="5"
-                value={darkness}
-                onChange={(e) => onDarknessChange(Number(e.target.value))}
-              />
-            </div>
+            )}
 
             <div className="control-group" style={{ marginTop: 8 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>

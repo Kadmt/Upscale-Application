@@ -15,7 +15,6 @@ export default function App() {
   const [selectedScale, setSelectedScale] = useState<number>(2)
   const [sharpness, setSharpness] = useState<number>(0)
   const [darkness, setDarkness] = useState<number>(18)
-  const [roundness, setRoundness] = useState<number>(60)
   const [mode, setMode] = useState<'general' | 'document8k'>('document8k')
 
   const controllerRef = useRef<InferenceController | null>(null)
@@ -89,8 +88,8 @@ export default function App() {
     const id = `manual-${Date.now()}`
     const sharpnessStrength = sharpness / 100
     const darknessFactor = darkness / 100
-    const roundnessStrength = roundness / 100
-    controllerRef.current?.processFullImage(id, imageData, selectedScale, sharpnessStrength, darknessFactor, roundnessStrength, mode)
+    const optimalRoundness = 0.6
+    controllerRef.current?.processFullImage(id, imageData, selectedScale, sharpnessStrength, darknessFactor, optimalRoundness, mode)
   }
 
   return (
@@ -120,12 +119,10 @@ export default function App() {
             scale={selectedScale}
             sharpness={sharpness}
             darkness={darkness}
-            roundness={roundness}
             mode={mode}
             onScaleChange={setSelectedScale}
             onSharpnessChange={setSharpness}
             onDarknessChange={setDarkness}
-            onRoundnessChange={setRoundness}
             onModeChange={setMode}
           />
 
