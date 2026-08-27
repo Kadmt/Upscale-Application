@@ -7,7 +7,7 @@ interface PreviewProps {
 
 export default function Preview({ originalImage, processedImage }: PreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const origCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
   const [zoom, setZoom] = useState<'fit' | '100' | '200'>('fit')
   const [splitPos, setSplitPos] = useState<number>(50) // 0 to 100%
   const [isDragging, setIsDragging] = useState<boolean>(false)
@@ -16,12 +16,7 @@ export default function Preview({ originalImage, processedImage }: PreviewProps)
 
   useEffect(() => {
     const canvas = canvasRef.current
-    if (!canvas) return
-    if (!activeImage) {
-      const ctx = canvas.getContext('2d')
-      ctx?.clearRect(0, 0, canvas.width, canvas.height)
-      return
-    }
+    if (!canvas || !activeImage) return
 
     const width = activeImage.width
     const height = activeImage.height
@@ -29,35 +24,37 @@ export default function Preview({ originalImage, processedImage }: PreviewProps)
     canvas.height = height
 
     const ctx = canvas.getContext('2d')!
-    ctx.putImageData(activeImage, 0, 0)
-  }, [activeImage])
 
-  // Render Original Image scaled to match Processed dimensions on top layer
-  useEffect(() => {
-    const origCanvas = origCanvasRef.current
-    if (!origCanvas || !originalImage || !processedImage) return
+    if (originalImage && processedImage) {
+      // 1. Render Processed HD Image on full canvas
+      ctx.putImageData(processedImage, 0, 0)
 
-    const width = processedImage.width
-    const height = processedImage.height
-    origCanvas.width = width
-    origCanvas.height = height
+      // 2. Render Original Image on left side clipped to splitPos%
+      const splitX = Math.round((splitPos / 100) * width)
+      if (splitX > 0) {
+        ctx.save()
+        ctx.beginPath()
+        ctx.rect(0, 0, splitX, height)
+        ctx.clip()
 
-    const ctx = origCanvas.getContext('2d')!
+        const tmp = document.createElement('canvas')
+        tmp.width = originalImage.width
+        tmp.height = originalImage.height
+        tmp.getContext('2d')!.putImageData(originalImage, 0, 0)
 
-    // Draw original image scaled to target width x height
-    const tmp = document.createElement('canvas')
-    tmp.width = originalImage.width
-    tmp.height = originalImage.height
-    tmp.getContext('2d')!.putImageData(originalImage, 0, 0)
-
-    ctx.imageSmoothingEnabled = true
-    ctx.imageSmoothingQuality = 'high'
-    ctx.drawImage(tmp, 0, 0, width, height)
-  }, [originalImage, processedImage])
+        ctx.imageSmoothingEnabled = true
+        ctx.imageSmoothingQuality = 'high'
+        ctx.drawImage(tmp, 0, 0, width, height)
+        ctx.restore()
+      }
+    } else {
+      ctx.putImageData(activeImage, 0, 0)
+    }
+  }, [originalImage, processedImage, activeImage, splitPos])
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isDragging) return
-    const rect = e.currentTarget.getBoundingClientRect()
+    if (!isDragging || !containerRef.current) return
+    const rect = containerRef.current.getBoundingClientRect()
     const x = e.clientX - rect.left
     const pos = Math.max(0, Math.min(100, (x / rect.width) * 100))
     setSplitPos(pos)
@@ -95,25 +92,21 @@ export default function Preview({ originalImage, processedImage }: PreviewProps)
     canvas.height = h + 40
     const ctx = canvas.getContext('2d')!
 
-    // Fill background
     ctx.fillStyle = '#f8fafc'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-    // Draw Original on left
     const origCanvas = document.createElement('canvas')
     origCanvas.width = originalImage.width
     origCanvas.height = originalImage.height
     origCanvas.getContext('2d')!.putImageData(originalImage, 0, 0)
     ctx.drawImage(origCanvas, 0, 30, w, h)
 
-    // Draw Processed on right
     const procCanvas = document.createElement('canvas')
     procCanvas.width = w
     procCanvas.height = h
     procCanvas.getContext('2d')!.putImageData(processedImage, 0, 0)
     ctx.drawImage(procCanvas, w + 20, 30, w, h)
 
-    // Headers
     ctx.fillStyle = '#0f172a'
     ctx.font = 'bold 16px sans-serif'
     ctx.fillText('Original Image', 10, 22)
@@ -197,46 +190,31 @@ export default function Preview({ originalImage, processedImage }: PreviewProps)
           </div>
         ) : (
           <div
+            ref={containerRef}
             style={{
               position: 'relative',
               maxWidth: '100%',
               maxHeight: '100%',
               overflow: zoom !== 'fit' ? 'auto' : 'hidden',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              display: 'inline-block',
             }}
           >
-            {/* Base Layer: Processed HD Image */}
+            {/* Single Unified Canvas Component */}
             <canvas
               ref={canvasRef}
               style={{
+                maxWidth: '100%',
+                maxHeight: '100%',
+                display: 'block',
                 transform: getZoomScale(),
                 transformOrigin: 'center center',
                 transition: 'transform 0.15s ease',
               }}
             />
 
-            {/* Top Layer: Original Image (Clipped dynamically by GPU) */}
+            {/* Split Slider Divider Line & Handle */}
             {originalImage && processedImage && (
               <>
-                <canvas
-                  ref={origCanvasRef}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: '100%',
-                    transform: getZoomScale(),
-                    transformOrigin: 'center center',
-                    transition: 'transform 0.15s ease',
-                    clipPath: `polygon(0 0, ${splitPos}% 0, ${splitPos}% 100%, 0 100%)`,
-                    pointerEvents: 'none',
-                  }}
-                />
-
-                {/* Vertical Divider Slider Line */}
                 <div
                   style={{
                     position: 'absolute',
@@ -250,7 +228,6 @@ export default function Preview({ originalImage, processedImage }: PreviewProps)
                     zIndex: 10,
                   }}
                 >
-                  {/* Slider Handle Knob */}
                   <div
                     style={{
                       position: 'absolute',
