@@ -23,86 +23,76 @@ export default function Settings({
 }: SettingsProps) {
   const [showAdvanced, setShowAdvanced] = useState(false)
 
+  const profiles = [
+    {
+      id: 'document8k' as const,
+      title: '📜 8K Văn Bản & Document',
+      desc: 'Scan PDF, Sách, Giấy khen, Chữ viết tay',
+    },
+    {
+      id: 'general' as const,
+      title: '🖼️ Ảnh Phong Cảnh & Vật Thể',
+      desc: 'Phong cảnh, Vật thể, Đồ họa 2D, Kiến trúc',
+    },
+    {
+      id: 'portrait' as const,
+      title: '👤 Chân Dung & Khuôn Mặt AI',
+      desc: 'Ảnh người, Ánh mắt, Gọng kính, Nước da',
+    },
+  ]
+
   return (
-    <div className="settings-panel">
-      <div className="panel-header">
-        <span className="panel-title">⚡ Upscale Studio Settings</span>
-        <button
-          type="button"
-          className="btn-secondary"
-          style={{ fontSize: 12, padding: '4px 10px' }}
-          onClick={() => setShowAdvanced(!showAdvanced)}
-        >
-          {showAdvanced ? '⚙️ Hide Advanced' : '⚙️ Advanced Controls'}
-        </button>
+    <div className="card" style={{ padding: 18 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <h3 style={{ margin: 0, fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.5, color: '#0f172a' }}>
+          ⚡ THIẾT LẬP UPSCALE (STUDIO SETTINGS)
+        </h3>
       </div>
 
-      {/* Mode Selection Profile */}
+      {/* Profile Selection */}
       <div className="control-group">
-        <label className="control-label" style={{ fontWeight: 600, fontSize: 12, marginBottom: 8, display: 'block', color: '#475569' }}>
-          CHỌN CHẾ ĐỘ XỬ LÝ (ENHANCEMENT PROFILE)
+        <label className="control-label" style={{ fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase', marginBottom: 8, display: 'block' }}>
+          1. CHỌN CHẾ ĐỘ XỬ LÝ (PROFILE)
         </label>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
-          <button
-            type="button"
-            className={`profile-card ${mode === 'document8k' ? 'active' : ''}`}
-            style={{
-              padding: '10px 10px',
-              borderRadius: 6,
-              border: mode === 'document8k' ? '2px solid #0f172a' : '1px solid #e2e8f0',
-              background: mode === 'document8k' ? '#f8fafc' : '#ffffff',
-              textAlign: 'left',
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
-            }}
-            onClick={() => onModeChange('document8k')}
-          >
-            <div style={{ fontSize: 13, fontWeight: 700, color: mode === 'document8k' ? '#0f172a' : '#334155', marginBottom: 2 }}>📜 8K Văn Bản</div>
-            <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.3 }}>Scan PDF, Sách, Chữ viết tay</div>
-          </button>
-
-          <button
-            type="button"
-            className={`profile-card ${mode === 'general' ? 'active' : ''}`}
-            style={{
-              padding: '10px 10px',
-              borderRadius: 6,
-              border: mode === 'general' ? '2px solid #0f172a' : '1px solid #e2e8f0',
-              background: mode === 'general' ? '#f8fafc' : '#ffffff',
-              textAlign: 'left',
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
-            }}
-            onClick={() => onModeChange('general')}
-          >
-            <div style={{ fontSize: 13, fontWeight: 700, color: mode === 'general' ? '#0f172a' : '#334155', marginBottom: 2 }}>🖼️ Ảnh & Cảnh</div>
-            <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.3 }}>Phong cảnh, Vật thể, Kiến trúc</div>
-          </button>
-
-          <button
-            type="button"
-            className={`profile-card ${mode === 'portrait' ? 'active' : ''}`}
-            style={{
-              padding: '10px 10px',
-              borderRadius: 6,
-              border: mode === 'portrait' ? '2px solid #0f172a' : '1px solid #e2e8f0',
-              background: mode === 'portrait' ? '#f8fafc' : '#ffffff',
-              textAlign: 'left',
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
-            }}
-            onClick={() => onModeChange('portrait')}
-          >
-            <div style={{ fontSize: 13, fontWeight: 700, color: mode === 'portrait' ? '#0f172a' : '#334155', marginBottom: 2 }}>👤 Chân Dung AI</div>
-            <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.3 }}>Khuôn mặt, Ánh mắt, Làn da</div>
-          </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {profiles.map((p) => {
+            const isActive = mode === p.id
+            return (
+              <button
+                key={p.id}
+                type="button"
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  padding: '10px 12px',
+                  borderRadius: 6,
+                  border: isActive ? '2px solid #0f172a' : '1px solid #e2e8f0',
+                  background: isActive ? '#f8fafc' : '#ffffff',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.15s ease',
+                }}
+                onClick={() => onModeChange(p.id)}
+              >
+                <div style={{ fontSize: 13, fontWeight: 700, color: isActive ? '#0f172a' : '#334155', marginBottom: 2 }}>
+                  {p.title}
+                </div>
+                <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.3 }}>
+                  {p.desc}
+                </div>
+              </button>
+            )
+          })}
         </div>
       </div>
 
-      {/* Scale Selection */}
-      <div className="control-group">
-        <label className="control-label">Tỷ lệ phóng to (Target Scale)</label>
-        <div className="pill-group">
+      {/* Target Scale Selection */}
+      <div className="control-group" style={{ marginTop: 16 }}>
+        <label className="control-label" style={{ fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase', marginBottom: 8, display: 'block' }}>
+          2. TỶ LỆ PHÓNG TO (TARGET SCALE)
+        </label>
+        <div className="pill-group" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', padding: 3, borderRadius: 6 }}>
           <button
             type="button"
             className={`pill-btn ${scale === 2 ? 'active' : ''}`}
@@ -127,28 +117,25 @@ export default function Settings({
         </div>
       </div>
 
-      {/* Collapsible Advanced Fine-Tuning */}
-      <div style={{ marginTop: 12 }}>
+      {/* Fine-Tuning Controls */}
+      <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid #e2e8f0' }}>
         <button
           type="button"
           className="btn-toggle-advanced"
+          style={{ background: '#f8fafc', border: '1px solid #e2e8f0', padding: '8px 12px', borderRadius: 6, width: '100%', fontSize: 12, fontWeight: 600, color: '#334155', cursor: 'pointer', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
           onClick={() => setShowAdvanced(!showAdvanced)}
         >
-          {showAdvanced
-            ? '▼ Nâng cao (Thu gọn)'
-            : mode === 'document8k'
-            ? '▶ Tùy chỉnh nâng cao (Độ đậm / Độ nét)'
-            : '▶ Tùy chỉnh nâng cao (Độ nét chi tiết)'}
+          <span>⚙️ Tinh chỉnh nâng cao (Fine-Tuning)</span>
+          <span style={{ fontSize: 10 }}>{showAdvanced ? '▲ Thu gọn' : '▼ Mở rộng'}</span>
         </button>
 
         {showAdvanced && (
-          <div className="advanced-panel">
-            {/* Show Text Darkness control ONLY for Document mode */}
+          <div className="advanced-panel" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: 12, marginTop: 8 }}>
             {mode === 'document8k' && (
-              <div className="control-group" style={{ marginTop: 8 }}>
+              <div className="control-group" style={{ marginBottom: 10 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <label className="control-label" style={{ margin: 0 }}>✒️ Độ Đậm Nét Chữ</label>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#059669' }}>{darkness}%</span>
+                  <label className="control-label" style={{ margin: 0, fontSize: 11, fontWeight: 600 }}>✒️ Độ Đậm Nét Chữ (Ink Factor)</label>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#0f172a' }}>{darkness}%</span>
                 </div>
                 <input
                   type="range"
@@ -161,10 +148,10 @@ export default function Settings({
               </div>
             )}
 
-            <div className="control-group" style={{ marginTop: 8 }}>
+            <div className="control-group" style={{ margin: 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <label className="control-label" style={{ margin: 0 }}>✨ Sharpness Edge Filter</label>
-                <span style={{ fontSize: 12, fontWeight: 700, color: '#4f46e5' }}>{sharpness}%</span>
+                <label className="control-label" style={{ margin: 0, fontSize: 11, fontWeight: 600 }}>✨ Tăng Cường Độ Nét (Sharpness)</label>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#0f172a' }}>{sharpness}%</span>
               </div>
               <input
                 type="range"
