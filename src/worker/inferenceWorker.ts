@@ -661,14 +661,23 @@ self.onmessage = async (ev: MessageEvent) => {
                   const outTensor = outMap[outName];
                   outData = outTensor.data as Float32Array;
 
-                  // Check tile validity: if all 0s or NaN, discard outData so fallback tile is used
-                  let tMin = Infinity, tMax = -Infinity;
+                  // Compute input tile mean luma
+                  let inSum = 0;
+                  for (let ii = 0; ii < yFloat.length; ii++) inSum += yFloat[ii];
+                  const inMean = inSum / yFloat.length;
+
+                  // Check tile validity and normalize range
+                  let tMin = Infinity, tMax = -Infinity, tSum = 0;
                   for (let ii = 0; ii < outData.length; ii++) {
                     const vv = outData[ii];
                     if (vv < tMin) tMin = vv;
                     if (vv > tMax) tMax = vv;
+                    tSum += vv;
                   }
-                  if (!Number.isFinite(tMin) || !Number.isFinite(tMax) || (tMin === 0 && tMax === 0)) {
+                  const outMean = tSum / Math.max(1, outData.length);
+
+                  // Luma Guard: If input tile is bright paper (>0.35) but neural output collapsed to dark/black block (<0.20), discard outData
+                  if (!Number.isFinite(tMin) || !Number.isFinite(tMax) || (tMin === 0 && tMax === 0) || (inMean > 0.35 && outMean < 0.20)) {
                     outData = null;
                   } else {
                     const isScale255 = tMax > 1.5;
