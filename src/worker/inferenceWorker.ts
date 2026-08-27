@@ -366,6 +366,74 @@ function fastBilinearResampleRGBA(src: Uint8ClampedArray, sW: number, sH: number
   return out;
 }
 
+function apply8KVectorDocumentEngine(
+  rgba: Uint8ClampedArray,
+  w: number,
+  h: number,
+  sharpness: number,
+  darkness: number,
+  roundness: number,
+  isDoc: boolean
+): Uint8ClampedArray {
+  const len = rgba.length;
+  const out = new Uint8ClampedArray(len);
+
+  if (!isDoc) {
+    // Natural Photo Enhancement Profile: Edge Sharpening & Color Integrity
+    const alpha = Math.min(1.0, Math.max(0.0, sharpness * 1.5));
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const idx = (y * w + x) * 4;
+        const up = ((y - 1) * w + x) * 4;
+        const dn = ((y + 1) * w + x) * 4;
+        const lf = (y * w + (x - 1)) * 4;
+        const rt = (y * w + (x + 1)) * 4;
+
+        for (let c = 0; c < 3; c++) {
+          const val = rgba[idx + c];
+          const laplacian = 4 * val - rgba[up + c] - rgba[dn + c] - rgba[lf + c] - rgba[rt + c];
+          out[idx + c] = Math.max(0, Math.min(255, Math.round(val + alpha * laplacian)));
+        }
+        out[idx + 3] = rgba[idx + 3];
+      }
+    }
+    // Copy borders
+    for (let i = 0; i < len; i++) {
+      if (out[i] === 0 && (i < w * 4 || i >= (h - 1) * w * 4 || i % (w * 4) < 4 || i % (w * 4) >= (w - 1) * 4)) {
+        out[i] = rgba[i];
+      }
+    }
+    return out;
+  }
+
+  // 8K Document Scan Profile: Ink Solidification, Whitening & Curve Smoothing
+  const threshold = 180 - darkness * 60;
+  for (let i = 0; i < len; i += 4) {
+    const r = rgba[i];
+    const g = rgba[i + 1];
+    const b = rgba[i + 2];
+    const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+
+    if (luma < threshold) {
+      // Ink Solidification
+      const factor = Math.max(0, Math.min(1, luma / threshold));
+      const inkBoost = Math.pow(factor, 1.5 + roundness);
+      const finalLuma = Math.round(luma * inkBoost * (1 - darkness * 0.4));
+      out[i] = Math.min(r, finalLuma);
+      out[i + 1] = Math.min(g, finalLuma);
+      out[i + 2] = Math.min(b, finalLuma);
+    } else {
+      // Whitening paper background
+      const whiteBlend = Math.min(1.0, (luma - threshold) / (255 - threshold));
+      out[i] = Math.round(r + (255 - r) * whiteBlend);
+      out[i + 1] = Math.round(g + (255 - g) * whiteBlend);
+      out[i + 2] = Math.round(b + (255 - b) * whiteBlend);
+    }
+    out[i + 3] = rgba[i + 3];
+  }
+  return out;
+}
+
 self.onmessage = async (ev: MessageEvent) => {
   const msg = ev.data as any;
   try {
