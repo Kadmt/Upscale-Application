@@ -416,7 +416,8 @@ self.onmessage = async (ev: MessageEvent) => {
           let targetW = Math.floor(srcW * targetScale);
           let targetH = Math.floor(srcH * targetScale);
 
-          const srcU8 = new Uint8ClampedArray(msg.imageBuffer);
+          const expectedSrcBytes = srcW * srcH * 4;
+          const srcU8 = new Uint8ClampedArray(msg.imageBuffer, 0, expectedSrcBytes);
           const srcCanvas = new OffscreenCanvas(srcW, srcH);
           const sctx = srcCanvas.getContext('2d')!;
           sctx.putImageData(new ImageData(srcU8, srcW, srcH), 0, 0);
