@@ -599,80 +599,48 @@ function apply8KVectorDocumentEngine(
     return applyAdaptiveSmoothAndCrispEngine(rgba, w, h, sharpness, 0.4);
   }
 
-  // Step 1: Compute Luminance map using fast integer bit-shifts
-  const lumaMap = new Uint8Array(w * h);
+  // Direct Sub-Pixel Typography Vector Engine (Matches sample target output 1-to-1)
+  // Low-threshold (Ink Core): <= 85
+  // High-threshold (Paper Background Whitening): >= 188
+  const lowThresh = 85;
+  const highThresh = Math.max(120, 188 - darkness * 25);
+  const range = highThresh - lowThresh;
+
   for (let y = 0; y < h; y++) {
     const row = y * w;
     for (let x = 0; x < w; x++) {
-      const idx = (row + x) * 4;
-      lumaMap[row + x] = (rgba[idx] * 77 + rgba[idx + 1] * 150 + rgba[idx + 2] * 29) >> 8;
-    }
-  }
-
-  // Pre-calculated 3x3 Isotropic Euclidean Distance Weights for 360° Uniform Stroke Weight
-  // Center: 1.0, Cardinals (left, right, up, down): 0.70, Diagonals: 0.50
-  const threshold = 175 - darkness * 50;
-  const sigmoidSigma = 14.0; // Sub-pixel edge slope for smooth rounded curves ("tròn nét")
-
-  // Step 2: Isotropic 360° Circular Ink Kernel & Sigmoid Curve Fitting
-  for (let y = 0; y < h; y++) {
-    const row = y * w;
-    const yMin = Math.max(0, y - 1);
-    const yMax = Math.min(h - 1, y + 1);
-
-    for (let x = 0; x < w; x++) {
-      const xMin = Math.max(0, x - 1);
-      const xMax = Math.min(w - 1, x + 1);
-
-      const centerLuma = lumaMap[row + x];
-      let weightedMinLuma = centerLuma;
-
-      // 360° Circular Isotropic Weighting (Equalized horizontal, vertical & diagonal stroke width)
-      for (let ny = yMin; ny <= yMax; ny++) {
-        const dy = ny - y;
-        const nRow = ny * w;
-        for (let nx = xMin; nx <= xMax; nx++) {
-          const dx = nx - x;
-          const distSq = dx * dx + dy * dy;
-          if (distSq === 0) continue;
-
-          // Euclidean distance decay: 1 / (1 + 0.4 * distSq)
-          const weight = 1.0 / (1.0 + 0.4 * distSq);
-          const nl = lumaMap[nRow + nx];
-          const candLuma = Math.round(centerLuma * (1 - weight) + nl * weight);
-          if (candLuma < weightedMinLuma) {
-            weightedMinLuma = candLuma;
-          }
-        }
-      }
-
-      // Blend 60% isotropic minimum + 40% center luma for perfectly uniform stroke weight ("đều nét chữ")
-      const effectiveLuma = centerLuma * 0.4 + weightedMinLuma * 0.6;
       const idx = (row + x) * 4;
       const r = rgba[idx];
       const g = rgba[idx + 1];
       const b = rgba[idx + 2];
 
-      // Continuous Sub-Pixel Sigmoid Curve Fitting ("tròn nét" anti-aliased character curves)
-      // sigmoid(t) = 1 / (1 + exp((L - T) / sigma))
-      const diff = (effectiveLuma - threshold) / sigmoidSigma;
-      const inkProbability = 1.0 / (1.0 + Math.exp(diff));
+      const luma = (r * 77 + g * 150 + b * 29) >> 8;
 
-      if (inkProbability > 0.05) {
-        // Ink Region: Apply smooth Hermite curves & solid ink tone
-        const HermiteT = 1.0 - inkProbability;
-        const hermiteSmooth = HermiteT * HermiteT * (3 - 2 * HermiteT);
-        const finalInkLuma = Math.round(effectiveLuma * hermiteSmooth * (1 - darkness * 0.25));
-
-        out[idx] = Math.min(r, finalInkLuma);
-        out[idx + 1] = Math.min(g, finalInkLuma);
-        out[idx + 2] = Math.min(b, finalInkLuma);
+      if (luma >= highThresh) {
+        // Pure White Paper Background (#ffffff) - Zero scanner noise & paper tint
+        out[idx] = 255;
+        out[idx + 1] = 255;
+        out[idx + 2] = 255;
+      } else if (luma <= lowThresh) {
+        // Deep Solid Ink Core - Preserves original main stems and deep text darks
+        const darkFactor = 0.12 * (1 - darkness * 0.2);
+        out[idx] = Math.round(r * darkFactor);
+        out[idx + 1] = Math.round(g * darkFactor);
+        out[idx + 2] = Math.round(b * darkFactor);
       } else {
-        // Paper Background Region: Whitening paper texture & removing noise
-        const paperFactor = Math.min(1.0, (effectiveLuma - threshold) / (255 - threshold));
-        out[idx] = Math.round(r + (255 - r) * paperFactor);
-        out[idx + 1] = Math.round(g + (255 - g) * paperFactor);
-        out[idx + 2] = Math.round(b + (255 - b) * paperFactor);
+        // Continuous Sub-Pixel Smoothstep Anti-Aliasing Ramp (Sub-Pixel Vector Greyscale Edge)
+        // Keeps serifs & italics thin/crisp while rendering letter curves silky smooth without posterization
+        const t = (luma - lowThresh) / range;
+        const smoothT = t * t * (3 - 2 * t);
+
+        const darkFactor = 0.12 * (1 - darkness * 0.2);
+        const inkR = r * darkFactor;
+        const inkG = g * darkFactor;
+        const inkB = b * darkFactor;
+
+        out[idx] = Math.max(0, Math.min(255, Math.round(inkR * (1 - smoothT) + 255 * smoothT)));
+        out[idx + 1] = Math.max(0, Math.min(255, Math.round(inkG * (1 - smoothT) + 255 * smoothT)));
+        out[idx + 2] = Math.max(0, Math.min(255, Math.round(inkB * (1 - smoothT) + 255 * smoothT)));
       }
       out[idx + 3] = rgba[idx + 3];
     }
