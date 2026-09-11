@@ -599,38 +599,64 @@ function apply8KVectorDocumentEngine(
     return applyAdaptiveSmoothAndCrispEngine(rgba, w, h, sharpness, 0.4);
   }
 
-  // Direct Sub-Pixel Typography Vector Engine (Matches sample target output 1-to-1)
-  // Low-threshold (Ink Core): <= 85
-  // High-threshold (Paper Background Whitening): >= 188
-  const lowThresh = 85;
-  const highThresh = Math.max(120, 188 - darkness * 25);
-  const range = highThresh - lowThresh;
-
+  // Step 1: Compute Luminance map
+  const lumaMap = new Uint8Array(w * h);
   for (let y = 0; y < h; y++) {
     const row = y * w;
     for (let x = 0; x < w; x++) {
+      const idx = (row + x) * 4;
+      lumaMap[row + x] = (rgba[idx] * 77 + rgba[idx + 1] * 150 + rgba[idx + 2] * 29) >> 8;
+    }
+  }
+
+  // Threshold calibration: preserves light thin serifs ('e', 't', 'f', 'a') while keeping paper white
+  const lowThresh = 90;
+  const highThresh = Math.max(130, 175 - darkness * 20);
+  const range = highThresh - lowThresh;
+
+  // Step 2: Adaptive Thin-Stroke Preservation & Smoothstep Edge Rendering
+  for (let y = 0; y < h; y++) {
+    const row = y * w;
+    const yMin = Math.max(0, y - 1);
+    const yMax = Math.min(h - 1, y + 1);
+
+    for (let x = 0; x < w; x++) {
+      const xMin = Math.max(0, x - 1);
+      const xMax = Math.min(w - 1, x + 1);
+
+      const centerLuma = lumaMap[row + x];
+      let minLuma = centerLuma;
+
+      // Local 3x3 minimum search to protect thin serifs & light horizontal bars from washing out
+      for (let ny = yMin; ny <= yMax; ny++) {
+        const nRow = ny * w;
+        for (let nx = xMin; nx <= xMax; nx++) {
+          const nl = lumaMap[nRow + nx];
+          if (nl < minLuma) minLuma = nl;
+        }
+      }
+
+      // Blend 65% center luma + 35% local minimum to protect thin serifs & crossbars
+      const effectiveLuma = Math.round(centerLuma * 0.65 + minLuma * 0.35);
       const idx = (row + x) * 4;
       const r = rgba[idx];
       const g = rgba[idx + 1];
       const b = rgba[idx + 2];
 
-      const luma = (r * 77 + g * 150 + b * 29) >> 8;
-
-      if (luma >= highThresh) {
-        // Pure White Paper Background (#ffffff) - Zero scanner noise & paper tint
+      if (effectiveLuma >= highThresh) {
+        // Pure White Paper Background (#ffffff)
         out[idx] = 255;
         out[idx + 1] = 255;
         out[idx + 2] = 255;
-      } else if (luma <= lowThresh) {
-        // Deep Solid Ink Core - Preserves original main stems and deep text darks
+      } else if (effectiveLuma <= lowThresh) {
+        // Solid Dark Ink Core
         const darkFactor = 0.12 * (1 - darkness * 0.2);
         out[idx] = Math.round(r * darkFactor);
         out[idx + 1] = Math.round(g * darkFactor);
         out[idx + 2] = Math.round(b * darkFactor);
       } else {
-        // Continuous Sub-Pixel Smoothstep Anti-Aliasing Ramp (Sub-Pixel Vector Greyscale Edge)
-        // Keeps serifs & italics thin/crisp while rendering letter curves silky smooth without posterization
-        const t = (luma - lowThresh) / range;
+        // Continuous Sub-Pixel Smoothstep Anti-Aliased Edge Ramp
+        const t = (effectiveLuma - lowThresh) / range;
         const smoothT = t * t * (3 - 2 * t);
 
         const darkFactor = 0.12 * (1 - darkness * 0.2);
