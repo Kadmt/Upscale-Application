@@ -599,10 +599,7 @@ function apply8KVectorDocumentEngine(
     return applyAdaptiveSmoothAndCrispEngine(rgba, w, h, sharpness, 0.4);
   }
 
-  // 8K Document Scan Profile: 3x3 Morphological Dilation + Hermite Vector Curve Smoothing + Ink Solidification
-  const threshold = 180 - darkness * 60;
-
-  // Step 1: Compute Luminance map using fast Uint8Array integer bit-shifts
+  // Step 1: Compute Luminance map using fast integer bit-shifts
   const lumaMap = new Uint8Array(w * h);
   for (let y = 0; y < h; y++) {
     const row = y * w;
@@ -612,7 +609,12 @@ function apply8KVectorDocumentEngine(
     }
   }
 
-  // Step 2: 3x3 Morphological Ink Dilation (Min-Luma Filter) & Hermite Curve Fitting
+  // Pre-calculated 3x3 Isotropic Euclidean Distance Weights for 360° Uniform Stroke Weight
+  // Center: 1.0, Cardinals (left, right, up, down): 0.70, Diagonals: 0.50
+  const threshold = 175 - darkness * 50;
+  const sigmoidSigma = 14.0; // Sub-pixel edge slope for smooth rounded curves ("tròn nét")
+
+  // Step 2: Isotropic 360° Circular Ink Kernel & Sigmoid Curve Fitting
   for (let y = 0; y < h; y++) {
     const row = y * w;
     const yMin = Math.max(0, y - 1);
@@ -622,41 +624,55 @@ function apply8KVectorDocumentEngine(
       const xMin = Math.max(0, x - 1);
       const xMax = Math.min(w - 1, x + 1);
 
-      // Find minimum luma in 3x3 neighborhood (morphological dilation of dark ink strokes)
-      let minLuma = lumaMap[row + x];
+      const centerLuma = lumaMap[row + x];
+      let weightedMinLuma = centerLuma;
+
+      // 360° Circular Isotropic Weighting (Equalized horizontal, vertical & diagonal stroke width)
       for (let ny = yMin; ny <= yMax; ny++) {
+        const dy = ny - y;
         const nRow = ny * w;
         for (let nx = xMin; nx <= xMax; nx++) {
+          const dx = nx - x;
+          const distSq = dx * dx + dy * dy;
+          if (distSq === 0) continue;
+
+          // Euclidean distance decay: 1 / (1 + 0.4 * distSq)
+          const weight = 1.0 / (1.0 + 0.4 * distSq);
           const nl = lumaMap[nRow + nx];
-          if (nl < minLuma) minLuma = nl;
+          const candLuma = Math.round(centerLuma * (1 - weight) + nl * weight);
+          if (candLuma < weightedMinLuma) {
+            weightedMinLuma = candLuma;
+          }
         }
       }
 
-      const originalLuma = lumaMap[row + x];
-      // Blend 70% minLuma + 30% originalLuma for natural ink thickness
-      const effectiveLuma = originalLuma * 0.3 + minLuma * 0.7;
+      // Blend 60% isotropic minimum + 40% center luma for perfectly uniform stroke weight ("đều nét chữ")
+      const effectiveLuma = centerLuma * 0.4 + weightedMinLuma * 0.6;
       const idx = (row + x) * 4;
       const r = rgba[idx];
       const g = rgba[idx + 1];
       const b = rgba[idx + 2];
 
-      if (effectiveLuma < threshold) {
-        // Ink Solidification with Hermite Curve Smoothing
-        const norm = Math.max(0, Math.min(1, effectiveLuma / threshold));
-        // Hermite Smoothstep Curve: t * t * (3 - 2 * t)
-        const hermiteSmooth = norm * norm * (3 - 2 * norm);
-        const inkBoost = Math.pow(hermiteSmooth, 1.2 + roundness * 0.5);
-        const finalLuma = Math.round(effectiveLuma * inkBoost * (1 - darkness * 0.3));
+      // Continuous Sub-Pixel Sigmoid Curve Fitting ("tròn nét" anti-aliased character curves)
+      // sigmoid(t) = 1 / (1 + exp((L - T) / sigma))
+      const diff = (effectiveLuma - threshold) / sigmoidSigma;
+      const inkProbability = 1.0 / (1.0 + Math.exp(diff));
 
-        out[idx] = Math.min(r, finalLuma);
-        out[idx + 1] = Math.min(g, finalLuma);
-        out[idx + 2] = Math.min(b, finalLuma);
+      if (inkProbability > 0.05) {
+        // Ink Region: Apply smooth Hermite curves & solid ink tone
+        const HermiteT = 1.0 - inkProbability;
+        const hermiteSmooth = HermiteT * HermiteT * (3 - 2 * HermiteT);
+        const finalInkLuma = Math.round(effectiveLuma * hermiteSmooth * (1 - darkness * 0.25));
+
+        out[idx] = Math.min(r, finalInkLuma);
+        out[idx + 1] = Math.min(g, finalInkLuma);
+        out[idx + 2] = Math.min(b, finalInkLuma);
       } else {
-        // Paper Background Whitening
-        const whiteBlend = Math.min(1.0, (effectiveLuma - threshold) / (255 - threshold));
-        out[idx] = Math.round(r + (255 - r) * whiteBlend);
-        out[idx + 1] = Math.round(g + (255 - g) * whiteBlend);
-        out[idx + 2] = Math.round(b + (255 - b) * whiteBlend);
+        // Paper Background Region: Whitening paper texture & removing noise
+        const paperFactor = Math.min(1.0, (effectiveLuma - threshold) / (255 - threshold));
+        out[idx] = Math.round(r + (255 - r) * paperFactor);
+        out[idx + 1] = Math.round(g + (255 - g) * paperFactor);
+        out[idx + 2] = Math.round(b + (255 - b) * paperFactor);
       }
       out[idx + 3] = rgba[idx + 3];
     }
