@@ -196,10 +196,12 @@ async function runInferenceOnTile(tileBuffer: ArrayBuffer, tileWidth: number, ti
     try {
       const srcCanvas = new OffscreenCanvas(srcW, srcH);
       const sctx = srcCanvas.getContext('2d');
+      if (!sctx) throw new Error('No 2d context');
       const img = new ImageData(new Uint8ClampedArray(u8array), srcW, srcH);
       sctx.putImageData(img, 0, 0);
       const dstCanvas = new OffscreenCanvas(dstW, dstH);
       const dctx = dstCanvas.getContext('2d');
+      if (!dctx) throw new Error('No 2d context');
       dctx.drawImage(srcCanvas, 0, 0, dstW, dstH);
       const out = dctx.getImageData(0, 0, dstW, dstH);
       return out.data;
@@ -331,40 +333,191 @@ async function runInferenceOnTile(tileBuffer: ArrayBuffer, tileWidth: number, ti
   return { buffer: outU8.buffer, width: w, height: h };
 }
 
-function fastBilinearResampleRGBA(src: Uint8ClampedArray, sW: number, sH: number, dW: number, dH: number): Uint8ClampedArray {
+function classifyImageContent(rgba: Uint8ClampedArray, w: number, h: number): {
+  detectedMode: 'document8k' | 'portrait' | 'general';
+  sharpness: number;
+  darkness: number;
+  denoise: number;
+  reason: string;
+} {
+  const stepX = Math.max(1, Math.floor(w / 120));
+  const stepY = Math.max(1, Math.floor(h / 120));
+
+  let skinPixelCount = 0;
+  let textPixelCount = 0;
+  let totalSamples = 0;
+  let satSum = 0;
+  let highContrastEdges = 0;
+
+  for (let y = 5; y < h - 5; y += stepY) {
+    const row = y * w;
+    for (let x = 5; x < w - 5; x += stepX) {
+      totalSamples++;
+      const idx = (row + x) * 4;
+      const r = rgba[idx];
+      const g = rgba[idx + 1];
+      const b = rgba[idx + 2];
+
+      const maxC = Math.max(r, g, b);
+      const minC = Math.min(r, g, b);
+      const sat = maxC > 0 ? (maxC - minC) / maxC : 0;
+      satSum += sat;
+
+      // Skin Detection Formula
+      if (r > 95 && g > 40 && b > 20 && r > g && r > b && (Math.max(r, g, b) - Math.min(r, g, b) > 15) && Math.abs(r - g) > 15) {
+        skinPixelCount++;
+      }
+
+      // Local edge contrast check
+      const leftIdx = (row + Math.max(0, x - 2)) * 4;
+      const rightIdx = (row + Math.min(w - 1, x + 2)) * 4;
+      const lumaCenter = (r * 77 + g * 150 + b * 29) >> 8;
+      const lumaLeft = (rgba[leftIdx] * 77 + rgba[leftIdx + 1] * 150 + rgba[leftIdx + 2] * 29) >> 8;
+      const lumaRight = (rgba[rightIdx] * 77 + rgba[rightIdx + 1] * 150 + rgba[rightIdx + 2] * 29) >> 8;
+
+      const edgeMag = Math.abs(lumaRight - lumaLeft);
+      if (edgeMag > 45) {
+        highContrastEdges++;
+      }
+
+      // Text-like features: low saturation + high contrast edge + dark/light pixel
+      if (sat < 0.22 && (lumaCenter < 90 || lumaCenter > 175) && edgeMag > 35) {
+        textPixelCount++;
+      }
+    }
+  }
+
+  const avgSat = satSum / Math.max(1, totalSamples);
+  const skinRatio = skinPixelCount / Math.max(1, totalSamples);
+  const textRatio = textPixelCount / Math.max(1, totalSamples);
+  const edgeRatio = highContrastEdges / Math.max(1, totalSamples);
+
+  if (textRatio > 0.06 || (avgSat < 0.18 && edgeRatio > 0.10)) {
+    return {
+      detectedMode: 'document8k',
+      sharpness: 0.5,
+      darkness: 0.18,
+      denoise: 0.3,
+      reason: 'Văn Bản & Document (Chữ in / PDF / Giấy tờ)',
+    };
+  }
+
+  if (skinRatio > 0.12) {
+    return {
+      detectedMode: 'portrait',
+      sharpness: 0.45,
+      darkness: 0.1,
+      denoise: 0.5,
+      reason: 'Chân Dung & Khuôn Mặt AI (Khuôn mặt / Da người)',
+    };
+  }
+
+  return {
+    detectedMode: 'general',
+    sharpness: 0.42,
+    darkness: 0.12,
+    denoise: 0.4,
+    reason: 'Ảnh Phong Cảnh & Vật Thể (Đồ họa / Nhiếp ảnh)',
+  };
+}
+
+function bicubicInterpolate(p0: number, p1: number, p2: number, p3: number, t: number): number {
+  const a = -0.5 * p0 + 1.5 * p1 - 1.5 * p2 + 0.5 * p3;
+  const b = p0 - 2.5 * p1 + 2 * p2 - 0.5 * p3;
+  const c = -0.5 * p0 + 0.5 * p2;
+  const d = p1;
+  return a * t * t * t + b * t * t + c * t + d;
+}
+
+function bicubicResampleRGBA(src: Uint8ClampedArray, sW: number, sH: number, dW: number, dH: number): Uint8ClampedArray {
   const out = new Uint8ClampedArray(dW * dH * 4);
   const scaleX = sW / dW;
   const scaleY = sH / dH;
+
   for (let y = 0; y < dH; y++) {
     const sy = y * scaleY;
-    const y0 = Math.floor(sy);
-    const y1 = Math.min(sH - 1, y0 + 1);
-    const dy = sy - y0;
-    const row0 = y0 * sW;
-    const row1 = y1 * sW;
-    const outRow = y * dW;
+    const y1 = Math.floor(sy);
+    const y0 = Math.max(0, y1 - 1);
+    const y2 = Math.min(sH - 1, y1 + 1);
+    const y3 = Math.min(sH - 1, y1 + 2);
+    const dy = sy - y1;
 
     for (let x = 0; x < dW; x++) {
       const sx = x * scaleX;
-      const x0 = Math.floor(sx);
-      const x1 = Math.min(sW - 1, x0 + 1);
-      const dx = sx - x0;
+      const x1 = Math.floor(sx);
+      const x0 = Math.max(0, x1 - 1);
+      const x2 = Math.min(sW - 1, x1 + 1);
+      const x3 = Math.min(sW - 1, x1 + 2);
+      const dx = sx - x1;
 
-      const i00 = (row0 + x0) * 4;
-      const i10 = (row0 + x1) * 4;
-      const i01 = (row1 + x0) * 4;
-      const i11 = (row1 + x1) * 4;
-      const outIdx = (outRow + x) * 4;
+      const outIdx = (y * dW + x) * 4;
 
-      const w00 = (1 - dx) * (1 - dy);
-      const w10 = dx * (1 - dy);
-      const w01 = (1 - dx) * dy;
-      const w11 = dx * dy;
+      for (let c = 0; c < 4; c++) {
+        const col0 = bicubicInterpolate(src[(y0 * sW + x0) * 4 + c], src[(y0 * sW + x1) * 4 + c], src[(y0 * sW + x2) * 4 + c], src[(y0 * sW + x3) * 4 + c], dx);
+        const col1 = bicubicInterpolate(src[(y1 * sW + x0) * 4 + c], src[(y1 * sW + x1) * 4 + c], src[(y1 * sW + x2) * 4 + c], src[(y1 * sW + x3) * 4 + c], dx);
+        const col2 = bicubicInterpolate(src[(y2 * sW + x0) * 4 + c], src[(y2 * sW + x1) * 4 + c], src[(y2 * sW + x2) * 4 + c], src[(y2 * sW + x3) * 4 + c], dx);
+        const col3 = bicubicInterpolate(src[(y3 * sW + x0) * 4 + c], src[(y3 * sW + x1) * 4 + c], src[(y3 * sW + x2) * 4 + c], src[(y3 * sW + x3) * 4 + c], dx);
 
-      out[outIdx]     = Math.round(src[i00] * w00 + src[i10] * w10 + src[i01] * w01 + src[i11] * w11);
-      out[outIdx + 1] = Math.round(src[i00 + 1] * w00 + src[i10 + 1] * w10 + src[i01 + 1] * w01 + src[i11 + 1] * w11);
-      out[outIdx + 2] = Math.round(src[i00 + 2] * w00 + src[i10 + 2] * w10 + src[i01 + 2] * w01 + src[i11 + 2] * w11);
-      out[outIdx + 3] = Math.round(src[i00 + 3] * w00 + src[i10 + 3] * w10 + src[i01 + 3] * w01 + src[i11 + 3] * w11);
+        const val = bicubicInterpolate(col0, col1, col2, col3, dy);
+        out[outIdx + c] = Math.max(0, Math.min(255, Math.round(val)));
+      }
+    }
+  }
+  return out;
+}
+
+function applyAdaptiveSmoothAndCrispEngine(
+  rgba: Uint8ClampedArray,
+  w: number,
+  h: number,
+  sharpness: number,
+  denoise: number
+): Uint8ClampedArray {
+  const len = rgba.length;
+  const out = new Uint8ClampedArray(len);
+  const sharpAlpha = Math.min(2.5, Math.max(0.3, sharpness * 2.5));
+  const smoothAlpha = Math.min(0.8, Math.max(0.1, denoise * 0.7));
+
+  for (let y = 1; y < h - 1; y++) {
+    const row = y * w;
+    for (let x = 1; x < w - 1; x++) {
+      const idx = (row + x) * 4;
+      const up = ((y - 1) * w + x) * 4;
+      const dn = ((y + 1) * w + x) * 4;
+      const lf = (row + (x - 1)) * 4;
+      const rt = (row + (x + 1)) * 4;
+
+      // 2D Spatial Gradient Magnitude across RGB
+      let gradSum = 0;
+      for (let c = 0; c < 3; c++) {
+        const gx = rgba[rt + c] - rgba[lf + c];
+        const gy = rgba[dn + c] - rgba[up + c];
+        gradSum += Math.sqrt(gx * gx + gy * gy);
+      }
+      const avgGrad = gradSum / 3;
+
+      if (avgGrad < 14) {
+        // Flat Surface Denoising (Makes background & smooth regions buttery smooth "mịn")
+        for (let c = 0; c < 3; c++) {
+          const avg = (rgba[idx + c] * 4 + rgba[up + c] + rgba[dn + c] + rgba[lf + c] + rgba[rt + c]) / 8;
+          out[idx + c] = Math.max(0, Math.min(255, Math.round(rgba[idx + c] * (1 - smoothAlpha) + avg * smoothAlpha)));
+        }
+      } else {
+        // High-Contrast Edge Refinement (Makes text, lines, & contours crisp & sharp "thanh nét")
+        for (let c = 0; c < 3; c++) {
+          const val = rgba[idx + c];
+          const laplacian = 4 * val - rgba[up + c] - rgba[dn + c] - rgba[lf + c] - rgba[rt + c];
+          out[idx + c] = Math.max(0, Math.min(255, Math.round(val + sharpAlpha * laplacian)));
+        }
+      }
+      out[idx + 3] = rgba[idx + 3];
+    }
+  }
+
+  // Copy edge borders
+  for (let i = 0; i < len; i++) {
+    if (out[i] === 0 && (i < w * 4 || i >= (h - 1) * w * 4 || i % (w * 4) < 4 || i % (w * 4) >= (w - 1) * 4)) {
+      out[i] = rgba[i];
     }
   }
   return out;
@@ -443,36 +596,12 @@ function apply8KVectorDocumentEngine(
   const out = new Uint8ClampedArray(len);
 
   if (!isDoc) {
-    // Natural Photo Enhancement Profile: High-Contrast Edge Sharpening & Color Integrity
-    const alpha = Math.min(2.2, Math.max(0.3, sharpness * 2.2));
-    for (let y = 1; y < h - 1; y++) {
-      for (let x = 1; x < w - 1; x++) {
-        const idx = (y * w + x) * 4;
-        const up = ((y - 1) * w + x) * 4;
-        const dn = ((y + 1) * w + x) * 4;
-        const lf = (y * w + (x - 1)) * 4;
-        const rt = (y * w + (x + 1)) * 4;
-
-        for (let c = 0; c < 3; c++) {
-          const val = rgba[idx + c];
-          const laplacian = 4 * val - rgba[up + c] - rgba[dn + c] - rgba[lf + c] - rgba[rt + c];
-          out[idx + c] = Math.max(0, Math.min(255, Math.round(val + alpha * laplacian)));
-        }
-        out[idx + 3] = rgba[idx + 3];
-      }
-    }
-    // Copy borders
-    for (let i = 0; i < len; i++) {
-      if (out[i] === 0 && (i < w * 4 || i >= (h - 1) * w * 4 || i % (w * 4) < 4 || i % (w * 4) >= (w - 1) * 4)) {
-        out[i] = rgba[i];
-      }
-    }
-    return out;
+    return applyAdaptiveSmoothAndCrispEngine(rgba, w, h, sharpness, 0.4);
   }
 
   // 8K Document Scan Profile: 3x3 Morphological Dilation + Hermite Vector Curve Smoothing + Ink Solidification
   const threshold = 180 - darkness * 60;
-  
+
   // Step 1: Compute Luminance map using fast Uint8Array integer bit-shifts
   const lumaMap = new Uint8Array(w * h);
   for (let y = 0; y < h; y++) {
@@ -621,12 +750,14 @@ self.onmessage = async (ev: MessageEvent) => {
           const src = new Uint8ClampedArray(msg.imageBuffer);
           const srcCanvas = new OffscreenCanvas(w, h);
           const sctx = srcCanvas.getContext('2d');
+          if (!sctx) throw new Error('No 2d context');
           const srcImg = new ImageData(src, w, h);
           sctx.putImageData(srcImg, 0, 0);
           const dstW = Math.floor(w * scale);
           const dstH = Math.floor(h * scale);
           const dstCanvas = new OffscreenCanvas(dstW, dstH);
           const dctx = dstCanvas.getContext('2d');
+          if (!dctx) throw new Error('No 2d context');
           dctx.drawImage(srcCanvas, 0, 0, dstW, dstH);
           const out = dctx.getImageData(0, 0, dstW, dstH).data;
           post({ kind: 'debug', taskId: msg.taskId, message: 'bypassUpscale returning resized image', width: dstW, height: dstH });
@@ -638,7 +769,7 @@ self.onmessage = async (ev: MessageEvent) => {
       }
       case 'processImage': {
         currentTasks.add(msg.taskId);
-        post({ kind: 'progress', taskId: msg.taskId, progress: 0.2, message: 'Processing high-fidelity sub-pixel canvas...' });
+        post({ kind: 'progress', taskId: msg.taskId, progress: 0.1, message: 'Analyzing image structure & auto-detecting content type...' });
         try {
           const srcW = msg.width;
           const srcH = msg.height;
@@ -648,6 +779,24 @@ self.onmessage = async (ev: MessageEvent) => {
 
           const expectedSrcBytes = srcW * srcH * 4;
           const srcU8 = new Uint8ClampedArray(msg.imageBuffer, 0, expectedSrcBytes);
+
+          // Auto Classifier execution
+          let activeMode = msg.mode || 'auto';
+          let sharpnessAmount = msg.sharpness !== undefined ? msg.sharpness : 0.42;
+          let darknessAmount = msg.darkness !== undefined ? msg.darkness : 0.18;
+          let denoiseAmount = msg.denoise !== undefined ? msg.denoise : 0.4;
+          let classificationReason = 'Tự động tối ưu theo cấu trúc ảnh';
+
+          if (activeMode === 'auto') {
+            const classification = classifyImageContent(srcU8, srcW, srcH);
+            activeMode = classification.detectedMode;
+            sharpnessAmount = classification.sharpness;
+            darknessAmount = classification.darkness;
+            denoiseAmount = classification.denoise;
+            classificationReason = classification.reason;
+            post({ kind: 'progress', taskId: msg.taskId, progress: 0.3, message: `⚡ AI Auto-Detected: ${classificationReason}` });
+          }
+
           let resizedData: Uint8ClampedArray;
           try {
             if (typeof OffscreenCanvas === 'undefined') throw new Error('OffscreenCanvas unsupported');
@@ -664,37 +813,40 @@ self.onmessage = async (ev: MessageEvent) => {
             dctx.drawImage(srcCanvas, 0, 0, targetW, targetH);
             resizedData = dctx.getImageData(0, 0, targetW, targetH).data;
           } catch (canvasErr) {
-            // Pure JavaScript Bilinear Resampling Fallback (100% universal browser compatibility)
-            resizedData = fastBilinearResampleRGBA(srcU8, srcW, srcH, targetW, targetH);
+            resizedData = bicubicResampleRGBA(srcU8, srcW, srcH, targetW, targetH);
           }
-          const sharpnessAmount = msg.sharpness !== undefined ? msg.sharpness : 0.35;
-          const darknessAmount = msg.darkness !== undefined ? msg.darkness : 0.18;
-          const roundnessAmount = msg.roundness !== undefined ? msg.roundness : 0.6;
-          const isDoc = msg.mode === 'document8k';
 
           let inputData = resizedData;
-          if (!isDoc && session) {
+          if (activeMode !== 'document8k' && session) {
             try {
-              post({ kind: 'progress', taskId: msg.taskId, progress: 0.4, message: 'Running Deep Neural AI Super-Resolution...' });
+              post({ kind: 'progress', taskId: msg.taskId, progress: 0.6, message: 'Running Deep Neural AI Super-Resolution...' });
               const tileRes = await runInferenceOnTile(msg.imageBuffer, srcW, srcH);
               if (tileRes && tileRes.buffer && tileRes.buffer.byteLength === targetW * targetH * 4) {
                 inputData = new Uint8ClampedArray(tileRes.buffer);
               }
-            } catch (neuralErr) {
-              // Fallback cleanly to high-fidelity bicubic
-            }
+            } catch (neuralErr) {}
           }
 
           let finalU8: Uint8ClampedArray;
-          if (msg.mode === 'portrait') {
+          if (activeMode === 'portrait') {
             finalU8 = applyFacialPortraitEngine(inputData, targetW, targetH, sharpnessAmount);
+          } else if (activeMode === 'document8k') {
+            finalU8 = apply8KVectorDocumentEngine(inputData, targetW, targetH, sharpnessAmount, darknessAmount, 0.6, true);
           } else {
-            finalU8 = apply8KVectorDocumentEngine(inputData, targetW, targetH, sharpnessAmount, darknessAmount, roundnessAmount, isDoc);
+            finalU8 = applyAdaptiveSmoothAndCrispEngine(inputData, targetW, targetH, sharpnessAmount, denoiseAmount);
           }
 
           const outBuffer = finalU8.buffer.slice(finalU8.byteOffset, finalU8.byteOffset + targetW * targetH * 4);
-          post({ kind: 'progress', taskId: msg.taskId, progress: 1.0, message: 'Complete' });
-          post({ kind: 'imageResult', taskId: msg.taskId, imageBuffer: outBuffer, width: targetW, height: targetH }, [outBuffer]);
+          post({ kind: 'progress', taskId: msg.taskId, progress: 1.0, message: `Completed (${classificationReason})` });
+          post({
+            kind: 'imageResult',
+            taskId: msg.taskId,
+            imageBuffer: outBuffer,
+            width: targetW,
+            height: targetH,
+            detectedMode: activeMode,
+            detectedReason: classificationReason
+          }, [outBuffer]);
         } catch (e: any) {
           post({ kind: 'error', taskId: msg.taskId, message: 'Upscale failed: ' + String(e) });
         } finally {

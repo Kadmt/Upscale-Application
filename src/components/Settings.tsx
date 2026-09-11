@@ -4,11 +4,11 @@ interface SettingsProps {
   scale: number
   sharpness: number
   darkness: number
-  mode: 'general' | 'document8k' | 'portrait'
+  mode: 'auto' | 'general' | 'document8k' | 'portrait'
   onScaleChange: (scale: number) => void
   onSharpnessChange: (sharpness: number) => void
   onDarknessChange: (darkness: number) => void
-  onModeChange: (mode: 'general' | 'document8k' | 'portrait') => void
+  onModeChange: (mode: 'auto' | 'general' | 'document8k' | 'portrait') => void
 }
 
 export default function Settings({
@@ -25,14 +25,19 @@ export default function Settings({
 
   const profiles = [
     {
+      id: 'auto' as const,
+      title: '✨ Smart Auto AI (Tự Động Tối Ưu Tốt Nhất)',
+      desc: 'Phân tích tự động văn bản, chân dung & phông nền để làm mịn và thanh nét hoàn hảo',
+    },
+    {
       id: 'document8k' as const,
       title: '📜 8K Văn Bản & Document',
-      desc: 'Scan PDF, Sách, Giấy khen, Chữ viết tay',
+      desc: 'Chuyên scan PDF, Sách, Giấy khen, Chữ viết tay',
     },
     {
       id: 'general' as const,
-      title: '🖼️ Ảnh Phong Cảnh & Vật Thể',
-      desc: 'Phong cảnh, Vật thể, Đồ họa 2D, Kiến trúc',
+      title: '🖼️ Ảnh Phong Cảnh & Đồ Họa 2D',
+      desc: 'Phong cảnh, Đồ họa 2D, Vật thể, Kiến trúc',
     },
     {
       id: 'portrait' as const,

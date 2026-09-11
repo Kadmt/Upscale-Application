@@ -36,7 +36,8 @@ export interface ProcessImageRequest {
   sharpness?: number; // 0..2.5 enhancement strength
   darkness?: number; // 0..0.5 smooth text darkening factor
   roundness?: number; // 0..1 stroke roundness & solidification strength
-  mode?: 'general' | 'document8k' | 'portrait'; // enhancement profile
+  denoise?: number; // 0..1 background denoise & smooth surface strength
+  mode?: 'auto' | 'general' | 'document8k' | 'portrait'; // enhancement profile
 }
 
 export interface CancelRequest {
@@ -76,6 +77,8 @@ export interface ImageResultResponse {
   width: number;
   height: number;
   durationMs?: number; // optional processing time in milliseconds
+  detectedMode?: string;
+  detectedReason?: string;
 }
 
 export interface ErrorResponse {
@@ -84,8 +87,22 @@ export interface ErrorResponse {
   message: string;
 }
 
+export interface SessionInfoResponse {
+  kind: 'sessionInfo';
+  info: any;
+}
+
+export interface DebugResponse {
+  kind: 'debug';
+  taskId?: string;
+  message: string;
+  [key: string]: any;
+}
+
 export type WorkerResponse =
   | ProgressResponse
   | TileResultResponse
   | ImageResultResponse
-  | ErrorResponse;
+  | ErrorResponse
+  | SessionInfoResponse
+  | DebugResponse;

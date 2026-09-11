@@ -15,7 +15,7 @@ export default function App() {
   const [selectedScale, setSelectedScale] = useState<number>(2)
   const [sharpness, setSharpness] = useState<number>(50)
   const [darkness, setDarkness] = useState<number>(18)
-  const [mode, setMode] = useState<'general' | 'document8k' | 'portrait'>('document8k')
+  const [mode, setMode] = useState<'auto' | 'general' | 'document8k' | 'portrait'>('auto')
 
   const controllerRef = useRef<InferenceController | null>(null)
 
@@ -55,7 +55,8 @@ export default function App() {
         setProcessedImage(img)
         setStatus('done')
         setProgress(100)
-        setProgressMsg('Neural upscale completed successfully!')
+        const reasonText = detail.detectedReason ? ` (${detail.detectedReason})` : ''
+        setProgressMsg(`Xử lý thành công!${reasonText}`)
       } catch (err) {
         console.error('Failed to build image from result', err)
         setStatus('error')

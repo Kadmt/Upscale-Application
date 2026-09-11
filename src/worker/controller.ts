@@ -59,10 +59,10 @@ export class InferenceController {
     taskId: string,
     imageData: ImageData,
     scale = 2,
-    sharpness = 0.3,
+    sharpness = 0.42,
     darkness = 0.18,
     roundness = 0.6,
-    mode: 'general' | 'document8k' = 'document8k',
+    mode: 'auto' | 'general' | 'document8k' | 'portrait' = 'auto',
     tileSize?: number
   ) {
     // Simple single-message approach: transfer full image buffer to worker
@@ -77,7 +77,7 @@ export class InferenceController {
       sharpness,
       darkness,
       roundness,
-      mode,
+      mode: mode as any,
       tileSize,
     };
     this.worker.postMessage(req);

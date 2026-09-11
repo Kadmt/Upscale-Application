@@ -32,7 +32,8 @@ export default function Uploader({ onImage }: { onImage: (img: ImageData) => voi
     const handlePaste = (e: ClipboardEvent) => {
       const items = e.clipboardData?.items
       if (!items) return
-      for (const item of items) {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i]
         if (item.type.indexOf('image') !== -1) {
           const blob = item.getAsFile()
           if (blob) processFile(blob)
